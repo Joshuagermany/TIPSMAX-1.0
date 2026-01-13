@@ -13,9 +13,9 @@ export const Results: React.FC = () => {
 
   if (!result) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#000000' }}>
         <div className="text-center">
-          <p className="text-gray-600 mb-4">분석 결과를 찾을 수 없습니다.</p>
+          <p className="text-gray-300 mb-4">분석 결과를 찾을 수 없습니다.</p>
           <button
             onClick={() => navigate('/')}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
@@ -28,17 +28,17 @@ export const Results: React.FC = () => {
   }
 
   return (
-    <div className="bg-gray-50">
+    <div style={{ backgroundColor: '#000000', minHeight: '100%' }}>
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* 헤더 */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">분석 결과</h1>
-            <p className="text-gray-600">{filename}</p>
+            <h1 className="text-3xl font-bold text-white mb-2">분석 결과</h1>
+            <p className="text-gray-300">{filename}</p>
           </div>
           <button
             onClick={() => navigate('/')}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
           >
             새로 분석하기
           </button>
@@ -46,15 +46,15 @@ export const Results: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Radar Chart */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">4가지 관점 평가</h2>
+          <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">4가지 관점 평가</h2>
             <RadarChartComponent evaluations={result.evaluations} />
           </div>
 
           {/* Gauge Chart */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex items-center justify-center">
+          <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6 flex items-center justify-center">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 text-center">
+              <h2 className="text-lg font-semibold text-white mb-4 text-center">
                 종합 TIPS 적합도
               </h2>
               <GaugeChart score={result.overallScore} />
@@ -63,8 +63,8 @@ export const Results: React.FC = () => {
         </div>
 
         {/* Bar Chart */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">TIPS 분야별 적합도</h2>
+        <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6 mb-8">
+          <h2 className="text-lg font-semibold text-white mb-4">TIPS 분야별 적합도</h2>
           <BarChartComponent categories={result.tipsCategories} />
         </div>
 

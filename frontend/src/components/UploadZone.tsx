@@ -68,9 +68,10 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadSuccess, onError
     <div
       className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
         isDragging
-          ? 'border-primary-500 bg-primary-50'
-          : 'border-gray-300 hover:border-primary-400'
+          ? 'border-primary-500 bg-gray-800'
+          : 'border-gray-600 hover:border-primary-400'
       } ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      style={{ backgroundColor: isDragging ? 'rgba(31, 41, 55, 0.5)' : 'transparent' }}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -88,7 +89,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadSuccess, onError
       {isUploading ? (
         <div className="space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="text-gray-600">업로드 중...</p>
+          <p className="text-gray-300">업로드 중...</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -106,10 +107,10 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadSuccess, onError
             />
           </svg>
           <div>
-            <p className="text-lg font-medium text-gray-700">
+            <p className="text-lg font-medium text-gray-200">
               파일을 드래그하거나 클릭하여 업로드
             </p>
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-400 mt-2">
               PDF, DOCX, TXT 파일 지원 (최대 10MB)
             </p>
           </div>

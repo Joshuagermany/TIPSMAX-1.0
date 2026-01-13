@@ -88,3 +88,13 @@ export const googleLogin = async (code: string) => {
   
   return response.data;
 };
+
+export const naverLogin = async (code: string, state?: string) => {
+  const response = await api.post('/api/auth/naver/callback', {
+    code,
+    state,
+    provider: 'naver',
+  });
+
+  return response.data;
+};

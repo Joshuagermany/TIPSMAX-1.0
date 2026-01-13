@@ -14,19 +14,26 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# 카카오 OAuth 설정
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
 KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "")  # Client Secret이 활성화된 경우 필요
 KAKAO_REDIRECT_URI = os.getenv("KAKAO_REDIRECT_URI", "http://localhost:5173/login?provider=kakao")
 
-# 환경 변수 로드 확인 로그
+# 환경 변수 로드 확인 로그 (카카오)
 if KAKAO_CLIENT_SECRET:
     logger.info(f"카카오 Client Secret 로드됨 (길이: {len(KAKAO_CLIENT_SECRET)})")
 else:
     logger.warning("카카오 Client Secret이 설정되지 않았습니다. .env 파일을 확인하세요.")
 
+# 구글 OAuth 설정
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173/login?provider=google")
+
+# 네이버 OAuth 설정
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+NAVER_REDIRECT_URI = os.getenv("NAVER_REDIRECT_URI", "http://localhost:5173/login?provider=naver")
 
 
 class KakaoTokenRequest(BaseModel):
@@ -45,6 +52,11 @@ class GoogleTokenRequest(BaseModel):
     code: str
 
 
+class NaverTokenRequest(BaseModel):
+    code: str
+    state: str | None = None
+
+
 @router.get("/kakao/login")
 async def kakao_login():
     """카카오 로그인 페이지로 리다이렉트"""
@@ -53,6 +65,7 @@ async def kakao_login():
         f"?client_id={KAKAO_REST_API_KEY}"
         f"&redirect_uri={KAKAO_REDIRECT_URI}"
         f"&response_type=code"
+        f"&scope=profile_nickname,account_email"  # 닉네임과 이메일 정보 요청
     )
     return RedirectResponse(url=kakao_auth_url)
 
@@ -125,10 +138,13 @@ async def kakao_callback(request: KakaoTokenRequest):
             access_token = token_data.get("access_token")
             logger.info(f"카카오 액세스 토큰 발급 성공")
 
-            # 카카오 사용자 정보 조회
+            # 카카오 사용자 정보 조회 (필요한 정보를 명시적으로 요청)
             user_response = await client.get(
                 "https://kapi.kakao.com/v2/user/me",
                 headers={"Authorization": f"Bearer {access_token}"},
+                params={
+                    "property_keys": '["kakao_account.profile.nickname","kakao_account.profile.profile_image_url","kakao_account.email"]'
+                }
             )
 
             logger.info(f"카카오 사용자 정보 응답 상태: {user_response.status_code}")
@@ -142,18 +158,32 @@ async def kakao_callback(request: KakaoTokenRequest):
 
             user_data = user_response.json()
             logger.info(f"카카오 사용자 정보 조회 성공 - id: {user_data.get('id')}")
+            logger.info(f"카카오 사용자 정보 전체 응답: {user_data}")  # 디버깅용
             
             # 카카오 계정 정보 추출
             kakao_account = user_data.get("kakao_account", {})
             profile = kakao_account.get("profile", {})
             
+            # 닉네임 추출 (여러 경로 시도)
+            nickname = (
+                profile.get("nickname") or 
+                kakao_account.get("profile", {}).get("nickname") or
+                kakao_account.get("name") or 
+                None
+            )
+            
+            # 닉네임이 없으면 사용자 ID를 사용하거나 기본값 사용
+            if not nickname:
+                logger.warning(f"카카오 닉네임을 찾을 수 없습니다. user_data: {user_data}")
+                nickname = f"카카오 사용자 {user_data.get('id', '')}"
+            
             result = {
                 "success": True,
                 "user": {
                     "id": user_data.get("id"),
-                    "nickname": profile.get("nickname") or kakao_account.get("name") or "카카오 사용자",
+                    "nickname": nickname,
                     "email": kakao_account.get("email"),
-                    "profile_image": profile.get("profile_image_url"),
+                    "profile_image": profile.get("profile_image_url") or kakao_account.get("profile", {}).get("profile_image_url"),
                 },
                 "access_token": access_token,  # 임시 (추후 JWT로 교체)
             }
@@ -256,3 +286,119 @@ async def google_callback(request: GoogleTokenRequest):
     except Exception as e:
         logger.error(f"구글 로그인 처리 오류: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"구글 로그인 처리 오류: {str(e)}")
+
+
+@router.get("/naver/login")
+async def naver_login():
+    """네이버 로그인 페이지로 리다이렉트"""
+    if not NAVER_CLIENT_ID or not NAVER_REDIRECT_URI:
+        logger.error("네이버 OAuth 설정이 완료되지 않았습니다. NAVER_CLIENT_ID / NAVER_REDIRECT_URI 확인 필요")
+        raise HTTPException(status_code=500, detail="네이버 OAuth 설정이 완료되지 않았습니다. 서버 환경 변수를 확인하세요.")
+
+    # 간단한 state 값 (실서비스에서는 난수/세션 기반으로 검증 필요)
+    state = "tipsmax_naver_state"
+
+    naver_auth_url = (
+        "https://nid.naver.com/oauth2.0/authorize"
+        f"?response_type=code"
+        f"&client_id={NAVER_CLIENT_ID}"
+        f"&redirect_uri={NAVER_REDIRECT_URI}"
+        f"&state={state}"
+    )
+    return RedirectResponse(url=naver_auth_url)
+
+
+@router.post("/naver/callback")
+async def naver_callback(request: NaverTokenRequest):
+    """네이버 인증 코드를 받아서 액세스 토큰 발급"""
+    logger.info(f"네이버 로그인 콜백 요청 - code: {request.code[:20]}..., state: {request.state}")
+    try:
+        if not NAVER_CLIENT_ID or not NAVER_CLIENT_SECRET or not NAVER_REDIRECT_URI:
+            logger.error("네이버 OAuth 설정이 완료되지 않았습니다. NAVER_CLIENT_ID / NAVER_CLIENT_SECRET / NAVER_REDIRECT_URI 확인 필요")
+            raise HTTPException(status_code=500, detail="네이버 OAuth 설정이 완료되지 않았습니다. 서버 환경 변수를 확인하세요.")
+
+        async with httpx.AsyncClient() as client:
+            logger.info(
+                f"네이버 토큰 발급 요청 - redirect_uri: {NAVER_REDIRECT_URI}, client_id: {NAVER_CLIENT_ID[:8]}..., state: {request.state}"
+            )
+
+            # 네이버 토큰 발급 요청
+            token_response = await client.post(
+                "https://nid.naver.com/oauth2.0/token",
+                params={
+                    "grant_type": "authorization_code",
+                    "client_id": NAVER_CLIENT_ID,
+                    "client_secret": NAVER_CLIENT_SECRET,
+                    "code": request.code,
+                    "state": request.state or "tipsmax_naver_state",
+                    "redirect_uri": NAVER_REDIRECT_URI,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+
+            logger.info(f"네이버 토큰 응답 상태: {token_response.status_code}")
+            if token_response.status_code != 200:
+                error_text = token_response.text
+                logger.error(f"네이버 토큰 발급 실패: {error_text}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"네이버 토큰 발급 실패: {error_text}",
+                )
+
+            token_data = token_response.json()
+            access_token = token_data.get("access_token")
+            logger.info("네이버 액세스 토큰 발급 성공")
+
+            # 네이버 사용자 정보 조회
+            user_response = await client.get(
+                "https://openapi.naver.com/v1/nid/me",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+
+            logger.info(f"네이버 사용자 정보 응답 상태: {user_response.status_code}")
+            if user_response.status_code != 200:
+                error_text = user_response.text
+                logger.error(f"네이버 사용자 정보 조회 실패: {error_text}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"네이버 사용자 정보 조회 실패: {error_text}",
+                )
+
+            user_data = user_response.json()
+            logger.info(f"네이버 사용자 정보 전체 응답: {user_data}")
+
+            naver_user = user_data.get("response", {}) or {}
+
+            # 닉네임/이름 추출
+            nickname = (
+                naver_user.get("name")
+                or naver_user.get("nickname")
+                or (naver_user.get("email") or "").split("@")[0]
+                or None
+            )
+
+            if not nickname:
+                logger.warning(f"네이버 닉네임을 찾을 수 없습니다. naver_user: {naver_user}")
+                nickname = f"네이버 사용자 {naver_user.get('id', '')}"
+
+            result = {
+                "success": True,
+                "user": {
+                    "id": naver_user.get("id"),
+                    "nickname": nickname,
+                    "email": naver_user.get("email"),
+                    "profile_image": naver_user.get("profile_image"),
+                },
+                "access_token": access_token,  # 임시 (추후 JWT로 교체)
+            }
+            logger.info(f"네이버 로그인 성공 - 사용자: {result['user']['nickname']}")
+            return result
+
+    except HTTPException:
+        raise
+    except httpx.HTTPError as e:
+        logger.error(f"네이버 API 호출 오류: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"네이버 API 호출 오류: {str(e)}")
+    except Exception as e:
+        logger.error(f"네이버 로그인 처리 오류: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"네이버 로그인 처리 오류: {str(e)}")

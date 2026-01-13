@@ -6,15 +6,25 @@ export const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
+  const [showLogoutModal, setShowLogoutModal] = React.useState(false);
 
   // 디버깅용 로그
   React.useEffect(() => {
     console.log('Navbar 렌더링 - isAuthenticated:', isAuthenticated, 'user:', user);
   }, [isAuthenticated, user]);
 
-  const handleLogout = () => {
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true);
+  };
+
+  const handleLogoutConfirm = () => {
     logout();
     navigate('/login');
+    setShowLogoutModal(false);
+  };
+
+  const handleLogoutCancel = () => {
+    setShowLogoutModal(false);
   };
 
   return (
@@ -72,7 +82,7 @@ export const Navbar: React.FC = () => {
             
             {isAuthenticated ? (
               <button
-                onClick={handleLogout}
+                onClick={handleLogoutClick}
                 className="px-4 py-2 rounded-md text-sm font-medium transition-colors text-white border border-gray-600 hover:border-gray-500 hover:bg-gray-700"
                 style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
               >
@@ -94,6 +104,41 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 로그아웃 확인 모달 */}
+      {showLogoutModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={handleLogoutCancel}
+        >
+          <div 
+            className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold text-white mb-4">
+              로그아웃 하시겠습니까?
+            </h3>
+            <p className="text-gray-300 mb-6">
+              로그아웃하면 다시 로그인해야 합니다.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleLogoutCancel}
+                className="px-4 py-2 rounded-md text-sm font-medium transition-colors text-white border border-gray-600 hover:border-gray-500 hover:bg-gray-700"
+                style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
+              >
+                취소
+              </button>
+              <button
+                onClick={handleLogoutConfirm}
+                className="px-4 py-2 rounded-md text-sm font-medium transition-colors text-white bg-red-600 hover:bg-red-700 border border-red-700"
+              >
+                로그아웃
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

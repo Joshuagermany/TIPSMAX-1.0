@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { kakaoLogin, googleLogin } from '../services/api';
+import { kakaoLogin, googleLogin, naverLogin } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 export const Login: React.FC = () => {
@@ -9,7 +9,8 @@ export const Login: React.FC = () => {
   const { login } = useAuth();
   const code = searchParams.get('code');
   const error = searchParams.get('error');
-  const provider = searchParams.get('provider'); // kakao 또는 google
+  const provider = searchParams.get('provider'); // kakao, google, naver
+  const stateParam = searchParams.get('state');
 
   // 상태 관리
   const [loading, setLoading] = useState(false);
@@ -56,6 +57,9 @@ export const Login: React.FC = () => {
         } else if (provider === 'google') {
           console.log('📞 구글 로그인 API 호출 중...');
           response = await googleLogin(code!);
+        } else if (provider === 'naver') {
+          console.log('📞 네이버 로그인 API 호출 중...', { state: stateParam });
+          response = await naverLogin(code!, stateParam || undefined);
         } else {
           throw new Error('지원하지 않는 provider입니다.');
         }
@@ -145,8 +149,16 @@ export const Login: React.FC = () => {
   };
 
   const handleNaverLogin = () => {
-    // 네이버 로그인 로직 (추후 구현)
-    console.log('네이버 로그인');
+    const NAVER_CLIENT_ID = 'M_7h7fexbmq3A0mKYWON';
+    const redirectUri = encodeURIComponent(`${window.location.origin}/login?provider=naver`);
+    const state = 'tipsmax_naver_state';
+
+    window.location.href =
+      'https://nid.naver.com/oauth2.0/authorize' +
+      `?response_type=code` +
+      `&client_id=${NAVER_CLIENT_ID}` +
+      `&redirect_uri=${redirectUri}` +
+      `&state=${state}`;
   };
 
   return (

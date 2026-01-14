@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UploadZone } from '../components/UploadZone';
+import { MultiFileUploadZone } from '../components/MultiFileUploadZone';
 import { analyzeDocument } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,17 +8,25 @@ export const Home: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const navigate = useNavigate();
 
-  const handleUploadSuccess = async (fileId: string, filename: string) => {
+  const handleAllFilesUploaded = async (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }) => {
     setError(null);
     setIsAnalyzing(true);
 
     try {
-      const result = await analyzeDocument(fileId);
+      // 현재는 첫 번째 파일(재무재표)을 분석하도록 함
+      // TODO: 백엔드에서 다중 파일 분석을 지원하도록 수정 필요
+      const primaryFileId = files.financial?.fileId || files.shareholder?.fileId || files.corporate?.fileId;
+      const primaryFilename = files.financial?.filename || files.shareholder?.filename || files.corporate?.filename;
+
+      if (!primaryFileId) {
+        throw new Error('파일 ID를 찾을 수 없습니다.');
+      }
+
+      const result = await analyzeDocument(primaryFileId);
       // 결과를 state로 전달하여 Results 페이지로 이동
-      navigate('/results', { state: { result, filename } });
+      navigate('/results', { state: { result, filename: primaryFilename, uploadedFiles: files } });
     } catch (err: any) {
       setError(err.response?.data?.detail || '분석 중 오류가 발생했습니다.');
-    } finally {
       setIsAnalyzing(false);
     }
   };
@@ -52,7 +60,7 @@ export const Home: React.FC = () => {
               <p className="text-gray-400 text-sm mt-2">잠시만 기다려주세요.</p>
             </div>
           ) : (
-            <UploadZone onUploadSuccess={handleUploadSuccess} onError={handleError} />
+            <MultiFileUploadZone onAllFilesUploaded={handleAllFilesUploaded} onError={handleError} />
           )}
         </div>
 

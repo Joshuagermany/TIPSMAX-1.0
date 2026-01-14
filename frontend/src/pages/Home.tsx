@@ -13,7 +13,7 @@ export const Home: React.FC = () => {
     setIsAnalyzing(true);
 
     try {
-      // 현재는 첫 번째 파일(재무재표)을 분석하도록 함
+      // 현재는 첫 번째 파일(사업자 등록증)을 분석하도록 함
       // TODO: 백엔드에서 다중 파일 분석을 지원하도록 수정 필요
       const primaryFileId = files.financial?.fileId || files.shareholder?.fileId || files.corporate?.fileId;
       const primaryFilename = files.financial?.filename || files.shareholder?.filename || files.corporate?.filename;

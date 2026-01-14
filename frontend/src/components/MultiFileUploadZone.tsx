@@ -22,11 +22,12 @@ export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllF
     shareholder: { file: null, fileId: null, filename: null, isUploading: false, isUploaded: false },
     corporate: { file: null, fileId: null, filename: null, isUploading: false, isUploaded: false },
   });
+  const [hasStartupCertificate, setHasStartupCertificate] = useState<boolean>(true);
 
   const fileTypeLabels: Record<FileType, string> = {
-    financial: '재무재표',
+    financial: '사업자등록증',
     shareholder: '주주명부',
-    corporate: '법인등기부등본',
+    corporate: '재무제표',
   };
 
   const handleFile = useCallback(async (file: File, fileType: FileType) => {
@@ -202,10 +203,41 @@ export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllF
       {renderUploadZone('financial')}
       {renderUploadZone('shareholder')}
       {renderUploadZone('corporate')}
-      
+
       <p className="text-gray-400 text-sm text-left">
-        * 재무재표, 주주명부, 법인등기부등본 세 가지 파일을 모두 업로드해주세요.
+        * 사업자등록증, 주주명부, 재무제표 세 가지 파일을 모두 업로드해주세요.
       </p>
+
+      {/* 창업기업확인서 보유 여부 질문 */}
+      <div className="mt-4 flex items-center gap-4">
+        <span className="text-gray-300 text-sm">
+          창업기업확인서를 보유하고 있나요?
+        </span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setHasStartupCertificate(true)}
+            className={`px-3 py-1 rounded-md text-sm font-medium border ${
+              hasStartupCertificate
+                ? 'bg-primary-600 border-primary-500 text-white'
+                : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+            }`}
+          >
+            예
+          </button>
+          <button
+            type="button"
+            onClick={() => setHasStartupCertificate(false)}
+            className={`px-3 py-1 rounded-md text-sm font-medium border ${
+              !hasStartupCertificate
+                ? 'bg-primary-600 border-primary-500 text-white'
+                : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+            }`}
+          >
+            아니오
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

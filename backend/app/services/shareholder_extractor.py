@@ -276,6 +276,117 @@ class ShareholderExtractor:
 
         return {"shareholders": shareholders}
 
+    @staticmethod
+    def extract_from_text_fallback(text: str) -> Dict[str, List[Dict[str, str]]]:
+        """
+        텍스트에서 주식비율 패턴을 찾는 fallback 추출 방법.
+        '주주명' 열을 찾아서 그 열의 데이터를 가져오고, 주식비율 패턴을 찾아서 매칭.
+        """
+        shareholders: List[Dict[str, str]] = []
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("Fallback 추출 방법 시도: 주주명 열 찾기 + 주식비율 패턴 검색")
+        
+        # 주식비율 패턴: 소수점 둘째자리까지 있고 %가 붙어있는 값
+        # 예: "30.50%", "25.75%", "(30.50%)", " 30.50% "
+        ratio_pattern = re.compile(r'\(?\s*(\d+\.\d{1,2})\s*%\s*\)?')
+        
+        lines = text.splitlines()
+        
+        # 1단계: '주주명' 헤더 찾기
+        header_line_idx = None
+        name_column_idx = None
+        
+        for i, line in enumerate(lines):
+            line_clean = line.strip().replace(' ', '')
+            # '주주명' 키워드 찾기
+            if '주주명' in line_clean:
+                header_line_idx = i
+                logger.info(f"'주주명' 헤더 발견: 행 {i}")
+                
+                # 헤더 행을 공백/탭으로 분리하여 열 인덱스 찾기
+                header_parts = re.split(r'[\s\t]{2,}|\t', line.strip())
+                for idx, part in enumerate(header_parts):
+                    if '주주명' in part.replace(' ', ''):
+                        name_column_idx = idx
+                        logger.info(f"'주주명' 열 인덱스: {idx}")
+                        break
+                
+                if name_column_idx is not None:
+                    break
+        
+        if header_line_idx is None or name_column_idx is None:
+            logger.warning("'주주명' 헤더를 찾을 수 없음")
+            return {"shareholders": []}
+        
+        # 2단계: 헤더 다음 행부터 데이터 추출
+        for line_idx in range(header_line_idx + 1, len(lines)):
+            line = lines[line_idx].strip()
+            if not line:
+                continue
+            
+            # 주식비율 패턴이 있는지 확인
+            ratio_matches = list(ratio_pattern.finditer(line))
+            if not ratio_matches:
+                continue
+            
+            # 주식비율 추출 (첫 번째 매칭만 사용)
+            ratio_match = ratio_matches[0]
+            ratio_str = ratio_match.group(1)
+            
+            try:
+                ratio_float = float(ratio_str)
+                normalized_ratio = f"{ratio_float:.2f}"
+            except ValueError:
+                continue
+            
+            # 주주명 열에서 데이터 추출
+            # 줄을 공백/탭으로 분리
+            line_parts = re.split(r'[\s\t]{2,}|\t', line)
+            
+            # 주주명 열 인덱스 범위 체크
+            if name_column_idx < len(line_parts):
+                shareholder_name = line_parts[name_column_idx].strip()
+                
+                # 띄어쓰기, 괄호, 특수문자가 있으면 그 앞까지만 추출
+                # 예: "홍길동 (30.50%)" → "홍길동"
+                # 예: "김철수 25.75%" → "김철수"
+                if ' ' in shareholder_name:
+                    shareholder_name = shareholder_name.split(' ')[0].strip()
+                if '(' in shareholder_name:
+                    shareholder_name = shareholder_name.split('(')[0].strip()
+                if '（' in shareholder_name:  # 전각 괄호
+                    shareholder_name = shareholder_name.split('（')[0].strip()
+                
+                # 주주명 정리 (특수문자 제거, 하지만 기본적인 한글/영문/숫자는 유지)
+                shareholder_name = re.sub(r'[^\w가-힣]', '', shareholder_name).strip()
+                
+                # 빈 주주명이거나 숫자만 있으면 '주주명 인식 불가'로 설정
+                if not shareholder_name or len(shareholder_name) < 1:
+                    shareholder_name = "주주명 인식 불가"
+                elif shareholder_name.replace('.', '').replace(',', '').isdigit():
+                    shareholder_name = "주주명 인식 불가"
+                
+                logger.info(f"Fallback 추출: 주주명='{shareholder_name}', 주식비율='{normalized_ratio}%'")
+                
+                shareholders.append({
+                    "name": shareholder_name,
+                    "share_ratio": normalized_ratio
+                })
+            else:
+                # 주주명 열이 범위를 벗어났지만 주식비율은 있으면 '주주명 인식 불가'로 표시
+                logger.warning(f"행 {line_idx}: 주주명 열 인덱스({name_column_idx})가 범위를 벗어남 (열 수: {len(line_parts)})")
+                logger.info(f"Fallback 추출: 주주명='주주명 인식 불가', 주식비율='{normalized_ratio}%'")
+                
+                shareholders.append({
+                    "name": "주주명 인식 불가",
+                    "share_ratio": normalized_ratio
+                })
+        
+        logger.info(f"Fallback 추출 완료: 총 {len(shareholders)}명의 주주 추출")
+        return {"shareholders": shareholders}
+
 
 def extract_shareholder_fields(file_path: str, file_ext: str, text: Optional[str] = None) -> Dict[str, List[Dict[str, str]]]:
     """
@@ -303,11 +414,27 @@ def extract_shareholder_fields(file_path: str, file_ext: str, text: Optional[str
     if text:
         try:
             result = extractor.extract_from_text(text)
-            return result
+            # 결과가 있으면 반환
+            if result["shareholders"]:
+                return result
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"텍스트 기반 추출 실패: {e}")
+    
+    # 기존 추출 방법이 모두 실패했고 텍스트가 있는 경우, fallback 방법 시도
+    if text:
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("기존 추출 방법 실패, fallback 방법 시도 (주식비율 패턴 검색)")
+            result = ShareholderExtractor.extract_from_text_fallback(text)
+            if result["shareholders"]:
+                return result
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Fallback 추출 실패: {e}")
 
     return {"shareholders": []}
 

@@ -5,14 +5,53 @@ PDF, DOCX, TXT 파일을 텍스트로 변환
 
 import os
 from typing import Optional
+
 import PyPDF2
 import pdfplumber
 from docx import Document
+import fitz  # PyMuPDF
+from PIL import Image
+import pytesseract
+
+# 윈도우 환경에서 Tesseract 실행 파일 경로를 명시적으로 지정
+# (환경변수 PATH에 추가했더라도, 프로세스가 갱신된 PATH를 못 볼 수 있어서 예방 차원)
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 
 class DocumentParser:
     """문서 파싱 클래스"""
-    
+
+    @staticmethod
+    def _ocr_pdf_with_tesseract(file_path: str) -> str:
+        """
+        PyMuPDF로 PDF 페이지를 이미지로 렌더링한 뒤
+        Tesseract OCR으로 텍스트 추출 (이미지 기반 PDF 대응).
+        """
+        text_chunks: list[str] = []
+        try:
+            doc = fitz.open(file_path)
+            for page_index in range(len(doc)):
+                page = doc[page_index]
+                # 해상도 조절 (dpi 비슷한 효과) - 2배 확대
+                zoom = 2.0
+                mat = fitz.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=mat)
+
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                # 한국어 + 영어 OCR
+                ocr_text = pytesseract.image_to_string(img, lang="kor+eng")
+                if ocr_text:
+                    text_chunks.append(ocr_text)
+        except Exception as e:
+            # OCR 실패 시 조용히 무시하고 빈 문자열 반환
+            print(f"OCR 파싱 실패: {e}")
+            return ""
+
+        full_text = "\n".join(text_chunks).strip()
+        print(f"OCR로 추출한 텍스트 길이: {len(full_text)}")
+        return full_text
+
     @staticmethod
     def parse_pdf(file_path: str) -> str:
         """PDF 파일 파싱"""
@@ -25,17 +64,31 @@ class DocumentParser:
                     if page_text:
                         text += page_text + "\n"
         except Exception as e:
-            # PyPDF2로 폴백
+            print(f"pdfplumber 파싱 실패: {e}")
+
+        # pdfplumber 결과가 너무 짧으면 PyPDF2 시도
+        if not text.strip() or len(text.strip()) < 10:
             try:
                 with open(file_path, 'rb') as file:
                     pdf_reader = PyPDF2.PdfReader(file)
                     for page in pdf_reader.pages:
-                        text += page.extract_text() + "\n"
+                        page_text = page.extract_text() or ""
+                        text += page_text + "\n"
             except Exception as e2:
-                raise Exception(f"PDF 파싱 실패: {str(e2)}")
-        
+                print(f"PyPDF2 파싱 실패: {e2}")
+
+        # 여전히 텍스트가 없거나 너무 짧으면 OCR 시도
+        if not text.strip() or len(text.strip()) < 10:
+            print("텍스트 기반 파싱 결과가 부족하여 OCR 시도...")
+            ocr_text = DocumentParser._ocr_pdf_with_tesseract(file_path)
+            if ocr_text:
+                return ocr_text.strip()
+            else:
+                raise Exception("PDF 파싱 실패: 텍스트 및 OCR 모두 실패")
+
+        print(f"PDF 텍스트 길이: {len(text.strip())}")
         return text.strip()
-    
+
     @staticmethod
     def parse_docx(file_path: str) -> str:
         """DOCX 파일 파싱"""
@@ -45,7 +98,7 @@ class DocumentParser:
             return text.strip()
         except Exception as e:
             raise Exception(f"DOCX 파싱 실패: {str(e)}")
-    
+
     @staticmethod
     def parse_txt(file_path: str) -> str:
         """TXT 파일 파싱"""
@@ -61,12 +114,12 @@ class DocumentParser:
                 return text.strip()
             except Exception as e:
                 raise Exception(f"TXT 파싱 실패: {str(e)}")
-    
+
     @staticmethod
     def parse(file_path: str, file_extension: str) -> str:
         """파일 확장자에 따라 적절한 파서 호출"""
         ext = file_extension.lower().lstrip('.')
-        
+
         if ext == 'pdf':
             return DocumentParser.parse_pdf(file_path)
         elif ext in ['docx', 'doc']:

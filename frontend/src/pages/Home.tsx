@@ -1,32 +1,34 @@
 import React, { useState } from 'react';
 import { MultiFileUploadZone } from '../components/MultiFileUploadZone';
-import { analyzeDocument } from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { analyzeBusinessRegistration, BusinessRegistrationInfo } from '../services/api';
 
 export const Home: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const navigate = useNavigate();
+  const [uploadedFiles, setUploadedFiles] = useState<{ financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } } | null>(null);
+  const [businessInfo, setBusinessInfo] = useState<BusinessRegistrationInfo | null>(null);
 
-  const handleAllFilesUploaded = async (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }) => {
+  const handleAllFilesUploaded = (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }) => {
+    setError(null);
+    setUploadedFiles(files);
+    setBusinessInfo(null);
+  };
+
+  const handleStartAnalysis = async () => {
+    if (!uploadedFiles?.financial?.fileId) {
+      setError('먼저 사업자등록증 파일을 업로드해주세요.');
+      return;
+    }
+
     setError(null);
     setIsAnalyzing(true);
 
     try {
-      // 현재는 첫 번째 파일(사업자 등록증)을 분석하도록 함
-      // TODO: 백엔드에서 다중 파일 분석을 지원하도록 수정 필요
-      const primaryFileId = files.financial?.fileId || files.shareholder?.fileId || files.corporate?.fileId;
-      const primaryFilename = files.financial?.filename || files.shareholder?.filename || files.corporate?.filename;
-
-      if (!primaryFileId) {
-        throw new Error('파일 ID를 찾을 수 없습니다.');
-      }
-
-      const result = await analyzeDocument(primaryFileId);
-      // 결과를 state로 전달하여 Results 페이지로 이동
-      navigate('/results', { state: { result, filename: primaryFilename, uploadedFiles: files } });
+      const info = await analyzeBusinessRegistration(uploadedFiles.financial.fileId);
+      setBusinessInfo(info);
     } catch (err: any) {
-      setError(err.response?.data?.detail || '분석 중 오류가 발생했습니다.');
+      setError(err.response?.data?.detail || '사업자등록증 분석 중 오류가 발생했습니다.');
+    } finally {
       setIsAnalyzing(false);
     }
   };
@@ -60,7 +62,23 @@ export const Home: React.FC = () => {
               <p className="text-gray-400 text-sm mt-2">잠시만 기다려주세요.</p>
             </div>
           ) : (
-            <MultiFileUploadZone onAllFilesUploaded={handleAllFilesUploaded} onError={handleError} />
+            <>
+              <MultiFileUploadZone onAllFilesUploaded={handleAllFilesUploaded} onError={handleError} />
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleStartAnalysis}
+                  disabled={!uploadedFiles?.financial?.fileId}
+                  className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                    uploadedFiles?.financial?.fileId
+                      ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                      : 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  분석 시작
+                </button>
+              </div>
+            </>
           )}
         </div>
 
@@ -74,6 +92,20 @@ export const Home: React.FC = () => {
         {/* 안내 사항 */}
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <h3 className="font-semibold text-white mb-2">분석 항목</h3>
+
+          {businessInfo && (
+            <div className="mb-4 text-sm text-gray-300 space-y-1">
+              <p>
+                <span className="font-semibold">개업연월일:</span>{' '}
+                {businessInfo.opening_date_normalized || businessInfo.opening_date_raw || '-'}
+              </p>
+              <p>
+                <span className="font-semibold">본점소재지:</span>{' '}
+                {businessInfo.head_office_address || '-'}
+              </p>
+            </div>
+          )}
+
           <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
             <li>TIPS 기술 분야 자동 분류 (10개 분야)</li>
             <li>기술성, 사업성, 팀 역량, TIPS 적합성 평가</li>

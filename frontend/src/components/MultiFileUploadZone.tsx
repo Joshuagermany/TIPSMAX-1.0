@@ -68,21 +68,21 @@ export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllF
           },
         };
 
-        // 모든 파일이 업로드되었는지 확인
-        const uploadedFiles: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } } = {};
+        // ⚠️ 임시: 사업자등록증만 있어도 분석 시작할 수 있도록
+        // financial 파일이 준비되면 현재까지의 파일 상태를 그대로 넘김
         if (updatedFiles.financial.isUploaded && updatedFiles.financial.fileId) {
-          uploadedFiles.financial = { fileId: updatedFiles.financial.fileId, filename: updatedFiles.financial.filename! };
-        }
-        if (updatedFiles.shareholder.isUploaded && updatedFiles.shareholder.fileId) {
-          uploadedFiles.shareholder = { fileId: updatedFiles.shareholder.fileId, filename: updatedFiles.shareholder.filename! };
-        }
-        if (updatedFiles.corporate.isUploaded && updatedFiles.corporate.fileId) {
-          uploadedFiles.corporate = { fileId: updatedFiles.corporate.fileId, filename: updatedFiles.corporate.filename! };
-        }
-
-        // 모든 파일이 업로드되었으면 콜백 호출
-        if (uploadedFiles.financial && uploadedFiles.shareholder && uploadedFiles.corporate) {
-          setTimeout(() => onAllFilesUploaded(uploadedFiles), 100);
+          const simplified = {
+            financial: updatedFiles.financial.fileId
+              ? { fileId: updatedFiles.financial.fileId, filename: updatedFiles.financial.filename! }
+              : undefined,
+            shareholder: updatedFiles.shareholder.fileId
+              ? { fileId: updatedFiles.shareholder.fileId, filename: updatedFiles.shareholder.filename! }
+              : undefined,
+            corporate: updatedFiles.corporate.fileId
+              ? { fileId: updatedFiles.corporate.fileId, filename: updatedFiles.corporate.filename! }
+              : undefined,
+          };
+          setTimeout(() => onAllFilesUploaded(simplified), 0);
         }
 
         return updatedFiles;

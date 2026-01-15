@@ -71,6 +71,20 @@ export const analyzeDocument = async (fileId: string): Promise<AnalysisResult> =
   return response.data;
 };
 
+export interface BusinessRegistrationInfo {
+  opening_date_raw?: string;
+  opening_date_normalized?: string;
+  head_office_address?: string;
+}
+
+export const analyzeBusinessRegistration = async (fileId: string): Promise<BusinessRegistrationInfo> => {
+  const response = await api.post<BusinessRegistrationInfo>('/api/analyze/business-registration', {
+    file_id: fileId,
+  });
+
+  return response.data;
+};
+
 export const kakaoLogin = async (code: string) => {
   const response = await api.post('/api/auth/kakao/callback', {
     code: code,

@@ -20,9 +20,11 @@ UPLOAD_DIR = "uploads"
 
 class BusinessRegistrationRequest(BaseModel):
     file_id: str
+    filename: Optional[str] = None  # 파일명 추가 (기업명 추출용)
 
 
 class BusinessRegistrationResult(BaseModel):
+    company_name: Optional[str] = None
     opening_date_raw: Optional[str] = None
     opening_date_normalized: Optional[str] = None
     head_office_address: Optional[str] = None
@@ -95,6 +97,29 @@ async def analyze_business_registration(request: BusinessRegistrationRequest):
     """사업자등록증에서 개업연월일 및 본점소재지를 추출하는 엔드포인트"""
 
     file_id = request.file_id
+    filename = request.filename or ""
+
+    # 파일명에서 기업명 추출 ("사업자등록증_" 뒤의 부분, 첫 번째 언더바까지만)
+    company_name = None
+    if filename:
+        # "사업자등록증_기업명_2025.pdf" 형식에서 기업명 추출
+        # 예: "사업자등록증_아크론에코_2025" → "아크론에코"
+        import re
+        # 파일 확장자 제거
+        name_without_ext = os.path.splitext(filename)[0]
+        # "사업자등록증_" 또는 "사업자등록증 "으로 시작하는지 확인
+        # 첫 번째 언더바 이후 부분에서, 다음 언더바 전까지 추출
+        match = re.search(r'사업자등록증[_\s]+([^_]+)', name_without_ext, re.IGNORECASE)
+        if match:
+            # 첫 번째 언더바 이후 부분에서, 다음 언더바 전까지
+            company_name = match.group(1).strip()
+        else:
+            # "사업자등록증_"이 없으면 전체 파일명 사용 (확장자 제외)
+            # 하지만 언더바가 있으면 첫 번째 언더바까지만
+            if '_' in name_without_ext:
+                company_name = name_without_ext.split('_')[0]
+            else:
+                company_name = name_without_ext
 
     # 업로드된 파일 찾기 (기존 로직 재사용)
     file_path = None
@@ -126,10 +151,13 @@ async def analyze_business_registration(request: BusinessRegistrationRequest):
         # 디버깅: 추출된 텍스트의 일부를 로그로 출력
         import logging
         logger = logging.getLogger(__name__)
+        logger.info(f"사업자등록증 파일명: {filename}")
+        logger.info(f"추출된 기업명: {company_name}")
         logger.info(f"사업자등록증 텍스트 길이: {len(document_text)}")
         logger.info(f"사업자등록증 텍스트 앞 500자:\n{document_text[:500]}")
         
         fields = extract_business_registration_fields(document_text)
+        fields["company_name"] = company_name
         logger.info(f"추출된 필드: {fields}")
         
         return BusinessRegistrationResult(**fields)

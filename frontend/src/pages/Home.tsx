@@ -26,8 +26,11 @@ export const Home: React.FC = () => {
     setIsAnalyzing(true);
 
     try {
-      // 사업자등록증 분석
-      const businessInfoResult = await analyzeBusinessRegistration(uploadedFiles.financial.fileId);
+      // 사업자등록증 분석 (파일명 전달)
+      const businessInfoResult = await analyzeBusinessRegistration(
+        uploadedFiles.financial.fileId,
+        uploadedFiles.financial.filename
+      );
       setBusinessInfo(businessInfoResult);
 
       // 주주명부 분석 (업로드된 경우)
@@ -107,6 +110,12 @@ export const Home: React.FC = () => {
             <>
               {businessInfo && (
                 <div className="mb-4 text-sm text-gray-300 space-y-1">
+                  {businessInfo.company_name && (
+                    <p>
+                      <span className="font-semibold">기업명:</span>{' '}
+                      {businessInfo.company_name}
+                    </p>
+                  )}
                   <p>
                     <span className="font-semibold">개업연월일:</span>{' '}
                     {businessInfo.opening_date_normalized || businessInfo.opening_date_raw || '-'}

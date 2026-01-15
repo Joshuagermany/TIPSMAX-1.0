@@ -72,6 +72,7 @@ export const analyzeDocument = async (fileId: string): Promise<AnalysisResult> =
 };
 
 export interface BusinessRegistrationInfo {
+  company_name?: string;
   opening_date_raw?: string;
   opening_date_normalized?: string;
   head_office_address?: string;
@@ -86,9 +87,10 @@ export interface ShareholderResult {
   shareholders: ShareholderInfo[];
 }
 
-export const analyzeBusinessRegistration = async (fileId: string): Promise<BusinessRegistrationInfo> => {
+export const analyzeBusinessRegistration = async (fileId: string, filename?: string): Promise<BusinessRegistrationInfo> => {
   const response = await api.post<BusinessRegistrationInfo>('/api/analyze/business-registration', {
     file_id: fileId,
+    filename: filename,
   });
 
   return response.data;

@@ -77,8 +77,25 @@ export interface BusinessRegistrationInfo {
   head_office_address?: string;
 }
 
+export interface ShareholderInfo {
+  name: string;
+  share_ratio: string;
+}
+
+export interface ShareholderResult {
+  shareholders: ShareholderInfo[];
+}
+
 export const analyzeBusinessRegistration = async (fileId: string): Promise<BusinessRegistrationInfo> => {
   const response = await api.post<BusinessRegistrationInfo>('/api/analyze/business-registration', {
+    file_id: fileId,
+  });
+
+  return response.data;
+};
+
+export const analyzeShareholder = async (fileId: string): Promise<ShareholderResult> => {
+  const response = await api.post<ShareholderResult>('/api/analyze/shareholder', {
     file_id: fileId,
   });
 

@@ -3,11 +3,12 @@ TIPSMAX 1.0 Backend API
 FastAPI 기반 문서 분석 서비스
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import logging
+import time
 
 # 환경 변수 로드 (모듈 import 전에 실행되어야 함)
 load_dotenv()
@@ -37,6 +38,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 모든 요청 로깅 미들웨어
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    path = request.url.path
+    method = request.method
+    
+    logger.info(f"요청 수신: {method} {path}")
+    print(f"\n[요청] {method} {path}")
+    
+    # 재무제표 분석 요청인 경우 특별히 강조
+    if "/analyze/financial-statement" in path:
+        print("=" * 60)
+        print("재무제표 분석 요청 감지!")
+        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("재무제표 분석 요청 감지!")
+        logger.info("=" * 60)
+    
+    response = await call_next(request)
+    
+    process_time = time.time() - start_time
+    logger.info(f"요청 완료: {method} {path} - {process_time:.2f}초")
+    print(f"[완료] {method} {path} - {process_time:.2f}초\n")
+    
+    return response
 
 # 라우트 등록
 try:

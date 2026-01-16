@@ -10,7 +10,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30초 타임아웃
+  timeout: 300000, // 5분 타임아웃 (재무제표 분석이 오래 걸릴 수 있음)
 });
 
 // 요청 인터셉터 (에러 로깅)
@@ -98,6 +98,25 @@ export const analyzeBusinessRegistration = async (fileId: string, filename?: str
 
 export const analyzeShareholder = async (fileId: string): Promise<ShareholderResult> => {
   const response = await api.post<ShareholderResult>('/api/analyze/shareholder', {
+    file_id: fileId,
+  });
+
+  return response.data;
+};
+
+export interface FinancialStatementPageInfo {
+  page_number: number;
+  type: string;
+  revenue?: string;
+}
+
+export interface FinancialStatementResult {
+  pages: FinancialStatementPageInfo[];
+  revenue?: string;
+}
+
+export const analyzeFinancialStatement = async (fileId: string): Promise<FinancialStatementResult> => {
+  const response = await api.post<FinancialStatementResult>('/api/analyze/financial-statement', {
     file_id: fileId,
   });
 

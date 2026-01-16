@@ -3,6 +3,7 @@
 """
 
 import os
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -13,9 +14,11 @@ from app.services.document_parser import DocumentParser
 from app.services.llm_analyzer import LLMAnalyzer
 from app.services.business_registration_extractor import extract_business_registration_fields
 from app.services.shareholder_extractor import extract_shareholder_fields
+from app.services.financial_statement_extractor import extract_financial_statement_fields
 
 router = APIRouter()
 UPLOAD_DIR = "uploads"
+logger = logging.getLogger(__name__)
 
 
 class BusinessRegistrationRequest(BaseModel):
@@ -41,6 +44,21 @@ class ShareholderItem(BaseModel):
 
 class ShareholderResult(BaseModel):
     shareholders: list[ShareholderItem] = []
+
+
+class FinancialStatementRequest(BaseModel):
+    file_id: str
+
+
+class FinancialStatementPageItem(BaseModel):
+    page_number: int
+    type: str
+    revenue: Optional[str] = None  # 매출액 (표준손익계산서인 경우)
+
+
+class FinancialStatementResult(BaseModel):
+    pages: list[FinancialStatementPageItem] = []
+    revenue: Optional[str] = None  # 매출액
 
 
 @router.post("/analyze", response_model=AnalysisResult)
@@ -140,7 +158,8 @@ async def analyze_business_registration(request: BusinessRegistrationRequest):
 
     try:
         parser = DocumentParser()
-        document_text = parser.parse(file_path, file_ext)
+        # 사업자등록증은 OCR 전용, 상단 50%만 분석
+        document_text = parser.parse(file_path, file_ext, ocr_only=True, top_half_only=True)
 
         if not document_text or len(document_text.strip()) < 10:
             raise HTTPException(
@@ -229,4 +248,100 @@ async def analyze_shareholder(request: ShareholderRequest):
         raise HTTPException(
             status_code=500,
             detail=f"주주명부 분석 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.post("/analyze/financial-statement", response_model=FinancialStatementResult)
+async def analyze_financial_statement(request: FinancialStatementRequest):
+    """재무제표에서 각 페이지를 분류하는 엔드포인트"""
+    
+    import sys
+    sys.stdout.flush()  # 버퍼 강제 출력
+    
+    print("\n" + "=" * 60)
+    print("재무제표 분석 엔드포인트 호출됨!")
+    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("재무제표 분석 엔드포인트 호출됨!")
+    logger.info(f"파일 ID: {request.file_id}")
+    print(f"파일 ID: {request.file_id}")
+    print("=" * 60 + "\n")
+    sys.stdout.flush()
+    
+    file_id = request.file_id
+
+    # 업로드된 파일 찾기
+    file_path = None
+    file_ext = None
+
+    logger.info(f"파일 찾기 시작: {file_id}")
+    print(f"파일 찾기 시작: {file_id}")
+    
+    for ext in [".pdf", ".docx", ".doc", ".txt"]:
+        candidate_path = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
+        logger.info(f"확인 중: {candidate_path}")
+        if os.path.exists(candidate_path):
+            file_path = candidate_path
+            file_ext = ext
+            logger.info(f"파일 찾음: {file_path}")
+            print(f"파일 찾음: {file_path}")
+            break
+
+    if not file_path:
+        logger.error(f"파일을 찾을 수 없음: {file_id}")
+        print(f"파일을 찾을 수 없음: {file_id}")
+        raise HTTPException(
+            status_code=404,
+            detail="파일을 찾을 수 없습니다."
+        )
+
+    try:
+        logger.info("재무제표 페이지 분류 시작...")
+        print("재무제표 페이지 분류 시작...")
+        # 재무제표 페이지 분류 (텍스트 파싱 없이 직접 PDF 분석)
+        result = extract_financial_statement_fields(file_path, file_ext, None)
+        logger.info(f"분류된 페이지 수: {len(result['pages'])}")
+        logger.info(f"페이지 분류 결과: {result['pages']}")
+        logger.info(f"매출액: {result.get('revenue')}")
+        print(f"분류된 페이지 수: {len(result['pages'])}")
+        print(f"페이지 분류 결과: {result['pages']}")
+        print(f"매출액: {result.get('revenue')}")
+        logger.info("=" * 60)
+        print("=" * 60 + "\n")
+        
+        # FinancialStatementPageItem 리스트로 변환
+        page_items = [
+            FinancialStatementPageItem(
+                page_number=item["page_number"],
+                type=item["type"],
+                revenue=item.get("revenue")
+            )
+            for item in result["pages"]
+        ]
+        
+        # 매출액은 result에서 직접 가져오거나, 페이지에서 가져오기
+        revenue = result.get("revenue")
+        if not revenue:
+            # 페이지에서 매출액 찾기
+            for item in result["pages"]:
+                if item.get("type") == "표준손익계산서" and item.get("revenue"):
+                    revenue = item.get("revenue")
+                    break
+        
+        logger.info(f"최종 반환할 매출액: {revenue}")
+        print(f"최종 반환할 매출액: {revenue}")
+        
+        return FinancialStatementResult(
+            pages=page_items,
+            revenue=revenue
+        )
+
+    except ValueError as e:
+        logger.error(f"재무제표 분석 오류 (ValueError): {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"재무제표 분석 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"재무제표 분석 중 오류가 발생했습니다: {str(e)}"
         )

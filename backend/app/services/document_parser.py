@@ -22,10 +22,13 @@ class DocumentParser:
     """문서 파싱 클래스"""
 
     @staticmethod
-    def _ocr_pdf_with_tesseract(file_path: str) -> str:
+    def _ocr_pdf_with_tesseract(file_path: str, top_half_only: bool = False) -> str:
         """
         PyMuPDF로 PDF 페이지를 이미지로 렌더링한 뒤
         Tesseract OCR으로 텍스트 추출 (이미지 기반 PDF 대응).
+        
+        Args:
+            top_half_only: True인 경우 상단 50%만 OCR 수행 (사업자등록증 등)
         """
         text_chunks: list[str] = []
         try:
@@ -35,7 +38,20 @@ class DocumentParser:
                 # 해상도 조절 (dpi 비슷한 효과) - 2배 확대
                 zoom = 2.0
                 mat = fitz.Matrix(zoom, zoom)
-                pix = page.get_pixmap(matrix=mat)
+                
+                if top_half_only:
+                    # 상단 50%만 추출
+                    page_rect = page.rect
+                    top_half_rect = fitz.Rect(
+                        page_rect.x0,
+                        page_rect.y0,
+                        page_rect.x1,
+                        page_rect.y0 + (page_rect.height * 0.5)
+                    )
+                    pix = page.get_pixmap(matrix=mat, clip=top_half_rect)
+                    print(f"페이지 {page_index + 1}: 상단 50%만 OCR 수행")
+                else:
+                    pix = page.get_pixmap(matrix=mat)
 
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
@@ -53,8 +69,24 @@ class DocumentParser:
         return full_text
 
     @staticmethod
-    def parse_pdf(file_path: str) -> str:
-        """PDF 파일 파싱"""
+    def parse_pdf(file_path: str, ocr_only: bool = False, top_half_only: bool = False) -> str:
+        """
+        PDF 파일 파싱
+        
+        Args:
+            ocr_only: True인 경우 텍스트 기반 파싱을 건너뛰고 바로 OCR 사용
+            top_half_only: True인 경우 상단 50%만 분석 (ocr_only와 함께 사용)
+        """
+        # OCR 전용 모드 (사업자등록증 등)
+        if ocr_only:
+            print("OCR 전용 모드로 파싱 시작...")
+            ocr_text = DocumentParser._ocr_pdf_with_tesseract(file_path, top_half_only=top_half_only)
+            if ocr_text:
+                return ocr_text.strip()
+            else:
+                raise Exception("PDF 파싱 실패: OCR 실패")
+        
+        # 일반 모드: 텍스트 기반 파싱 먼저 시도
         text = ""
         try:
             # pdfplumber로 먼저 시도 (더 정확함)
@@ -80,7 +112,7 @@ class DocumentParser:
         # 여전히 텍스트가 없거나 너무 짧으면 OCR 시도
         if not text.strip() or len(text.strip()) < 10:
             print("텍스트 기반 파싱 결과가 부족하여 OCR 시도...")
-            ocr_text = DocumentParser._ocr_pdf_with_tesseract(file_path)
+            ocr_text = DocumentParser._ocr_pdf_with_tesseract(file_path, top_half_only=top_half_only)
             if ocr_text:
                 return ocr_text.strip()
             else:
@@ -116,12 +148,20 @@ class DocumentParser:
                 raise Exception(f"TXT 파싱 실패: {str(e)}")
 
     @staticmethod
-    def parse(file_path: str, file_extension: str) -> str:
-        """파일 확장자에 따라 적절한 파서 호출"""
+    def parse(file_path: str, file_extension: str, ocr_only: bool = False, top_half_only: bool = False) -> str:
+        """
+        파일 확장자에 따라 적절한 파서 호출
+        
+        Args:
+            file_path: 파일 경로
+            file_extension: 파일 확장자
+            ocr_only: True인 경우 텍스트 기반 파싱을 건너뛰고 바로 OCR 사용 (PDF만 지원)
+            top_half_only: True인 경우 상단 50%만 분석 (PDF만 지원, ocr_only와 함께 사용)
+        """
         ext = file_extension.lower().lstrip('.')
 
         if ext == 'pdf':
-            return DocumentParser.parse_pdf(file_path)
+            return DocumentParser.parse_pdf(file_path, ocr_only=ocr_only, top_half_only=top_half_only)
         elif ext in ['docx', 'doc']:
             return DocumentParser.parse_docx(file_path)
         elif ext == 'txt':

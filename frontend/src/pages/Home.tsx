@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MultiFileUploadZone } from '../components/MultiFileUploadZone';
-import { analyzeBusinessRegistration, BusinessRegistrationInfo, analyzeShareholder, ShareholderResult } from '../services/api';
+import { analyzeBusinessRegistration, BusinessRegistrationInfo, analyzeShareholder, ShareholderResult, analyzeFinancialStatement, FinancialStatementResult } from '../services/api';
 
 export const Home: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
@@ -8,12 +8,26 @@ export const Home: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<{ financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } } | null>(null);
   const [businessInfo, setBusinessInfo] = useState<BusinessRegistrationInfo | null>(null);
   const [shareholderInfo, setShareholderInfo] = useState<ShareholderResult | null>(null);
+  const [financialStatementInfo, setFinancialStatementInfo] = useState<FinancialStatementResult | null>(null);
+  const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+
+  // 재무제표 정보가 업데이트될 때마다 로그 출력
+  useEffect(() => {
+    if (financialStatementInfo) {
+      console.log('🔄 재무제표 정보 상태 업데이트됨:', financialStatementInfo);
+      console.log('🔄 재무제표 페이지 수:', financialStatementInfo.pages?.length || 0);
+      console.log('🔄 재무제표 매출액:', financialStatementInfo.revenue);
+      console.log('🔄 매출액 존재 여부:', !!financialStatementInfo.revenue);
+    }
+  }, [financialStatementInfo]);
 
   const handleAllFilesUploaded = (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }) => {
     setError(null);
     setUploadedFiles(files);
     setBusinessInfo(null);
     setShareholderInfo(null);
+    setFinancialStatementInfo(null);
+    setAnalysisTime(null);
   };
 
   const handleStartAnalysis = async () => {
@@ -24,6 +38,9 @@ export const Home: React.FC = () => {
 
     setError(null);
     setIsAnalyzing(true);
+    setAnalysisTime(null);
+    
+    const startTime = Date.now();
 
     try {
       // 사업자등록증 분석 (파일명 전달)
@@ -43,9 +60,50 @@ export const Home: React.FC = () => {
           // 주주명부 분석 실패는 에러로 표시하지 않음 (선택적)
         }
       }
+
+      // 재무제표 분석 (업로드된 경우) - 마지막에 실행하여 완료될 때까지 로딩 유지
+      console.log('재무제표 파일 확인:', uploadedFiles?.corporate);
+      if (uploadedFiles?.corporate?.fileId) {
+        console.log('✅ 재무제표 분석 시작:', uploadedFiles.corporate.fileId);
+        console.log('✅ 재무제표 파일명:', uploadedFiles.corporate.filename);
+        try {
+          console.log('✅ API 호출 전...');
+          const financialStatementResult = await analyzeFinancialStatement(uploadedFiles.corporate.fileId);
+          console.log('✅ 재무제표 분석 완료:', financialStatementResult);
+          console.log('✅ 재무제표 페이지 수:', financialStatementResult.pages?.length || 0);
+          console.log('✅ 재무제표 페이지 상세:', financialStatementResult.pages);
+          console.log('✅ 재무제표 매출액:', financialStatementResult.revenue);
+          console.log('✅ 매출액 타입:', typeof financialStatementResult.revenue);
+          console.log('✅ 매출액 존재 여부:', !!financialStatementResult.revenue);
+          
+          // 상태 업데이트
+          console.log('✅ 상태 업데이트 전 financialStatementInfo:', financialStatementInfo);
+          setFinancialStatementInfo(financialStatementResult);
+          console.log('✅ 상태 업데이트 호출 완료');
+          console.log('✅ 새로운 값의 매출액:', financialStatementResult.revenue);
+          
+          // 상태가 제대로 반영되었는지 확인하기 위해 약간의 지연 후 재확인
+          setTimeout(() => {
+            console.log('✅ 1초 후 상태 확인:', financialStatementInfo);
+          }, 1000);
+        } catch (financialErr: any) {
+          console.error('❌ 재무제표 분석 실패:', financialErr);
+          console.error('❌ 에러 상세:', financialErr.response?.data);
+          // 재무제표 분석 실패는 에러로 표시하지 않음 (선택적)
+        }
+      } else {
+        console.log('⚠️ 재무제표 파일이 업로드되지 않음');
+        console.log('⚠️ uploadedFiles:', uploadedFiles);
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || '문서 분석 중 오류가 발생했습니다.');
     } finally {
+      // 모든 분석이 완료된 후에만 로딩 상태 해제
+      const endTime = Date.now();
+      const elapsedTime = ((endTime - startTime) / 1000).toFixed(2); // 초 단위, 소수점 2자리
+      setAnalysisTime(parseFloat(elapsedTime));
+      console.log('✅ 모든 분석 완료, 로딩 상태 해제');
+      console.log(`✅ 분석 소요 시간: ${elapsedTime}초`);
       setIsAnalyzing(false);
     }
   };
@@ -98,7 +156,14 @@ export const Home: React.FC = () => {
 
         {/* 안내 사항 */}
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <h3 className="font-semibold text-white mb-2">분석 항목</h3>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-semibold text-white">분석 항목</h3>
+            {analysisTime !== null && (
+              <span className="text-xs text-gray-400">
+                분석 시간: {analysisTime}초
+              </span>
+            )}
+          </div>
 
           {isAnalyzing ? (
             <div className="text-center py-8">
@@ -127,6 +192,15 @@ export const Home: React.FC = () => {
                 </div>
               )}
 
+              {financialStatementInfo && financialStatementInfo.revenue && (
+                <div className="mb-4 text-sm text-gray-300 space-y-1">
+                  <p>
+                    <span className="font-semibold">매출액:</span>{' '}
+                    {financialStatementInfo.revenue}원
+                  </p>
+                </div>
+              )}
+
               {shareholderInfo && shareholderInfo.shareholders.length > 0 && (
                 <div className="mb-4">
                   <p className="text-sm font-semibold text-white mb-2">주주명부</p>
@@ -150,6 +224,36 @@ export const Home: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+
+              {financialStatementInfo && (
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-white mb-2">재무제표 페이지 분류</p>
+                  {financialStatementInfo.pages && financialStatementInfo.pages.length > 0 ? (
+                    <div className="bg-gray-900 rounded border border-gray-700 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-800 border-b border-gray-700">
+                            <th className="px-4 py-2 text-left text-gray-300 font-medium">페이지</th>
+                            <th className="px-4 py-2 text-left text-gray-300 font-medium">문서 타입</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {financialStatementInfo.pages.map((page, index) => (
+                            <tr key={index} className="border-b border-gray-800 last:border-b-0">
+                              <td className="px-4 py-2 text-gray-300">{page.page_number}페이지</td>
+                              <td className="px-4 py-2 text-gray-300">{page.type}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-900 rounded border border-gray-700 p-4">
+                      <p className="text-gray-400 text-sm">재무제표 페이지를 찾을 수 없습니다.</p>
+                    </div>
+                  )}
                 </div>
               )}
 

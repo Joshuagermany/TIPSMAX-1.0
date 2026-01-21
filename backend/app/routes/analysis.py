@@ -54,6 +54,8 @@ class FinancialStatementPageItem(BaseModel):
     page_number: int
     type: str
     revenue: Optional[str] = None  # 매출액 (표준손익계산서인 경우)
+    total_liabilities: Optional[str] = None  # 부채 총계 (표준재무상태표인 경우)
+    total_equity: Optional[str] = None  # 자본총계 (표준재무상태표인 경우)
 
 
 class FinancialStatementResult(BaseModel):
@@ -314,7 +316,9 @@ async def analyze_financial_statement(request: FinancialStatementRequest):
             FinancialStatementPageItem(
                 page_number=item["page_number"],
                 type=item["type"],
-                revenue=item.get("revenue")
+                revenue=item.get("revenue"),
+                total_liabilities=item.get("total_liabilities"),
+                total_equity=item.get("total_equity")
             )
             for item in result["pages"]
         ]

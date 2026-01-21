@@ -192,15 +192,6 @@ export const Home: React.FC = () => {
                 </div>
               )}
 
-              {financialStatementInfo && financialStatementInfo.revenue && (
-                <div className="mb-4 text-sm text-gray-300 space-y-1">
-                  <p>
-                    <span className="font-semibold">매출액:</span>{' '}
-                    {financialStatementInfo.revenue}원
-                  </p>
-                </div>
-              )}
-
               {shareholderInfo && shareholderInfo.shareholders.length > 0 && (
                 <div className="mb-4">
                   <p className="text-sm font-semibold text-white mb-2">주주명부</p>
@@ -253,6 +244,40 @@ export const Home: React.FC = () => {
                     <div className="bg-gray-900 rounded border border-gray-700 p-4">
                       <p className="text-gray-400 text-sm">재무제표 페이지를 찾을 수 없습니다.</p>
                     </div>
+                  )}
+                  
+                  {/* 매출액 표시 */}
+                  {financialStatementInfo.revenue && (
+                    <div className="mt-4 text-sm text-gray-300 space-y-1">
+                      <p>
+                        <span className="font-semibold">매출액:</span>{' '}
+                        {financialStatementInfo.revenue}원
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* 부채 총계와 자본총계 표시 (표준재무상태표에서 추출) */}
+                  {financialStatementInfo.pages && financialStatementInfo.pages.length > 0 && (
+                    <>
+                      {financialStatementInfo.pages
+                        .filter(page => page.type === '표준재무상태표')
+                        .map((page, index) => (
+                          <div key={index} className="mt-4 text-sm text-gray-300 space-y-1">
+                            {page.total_liabilities && (
+                              <p>
+                                <span className="font-semibold">부채 총계:</span>{' '}
+                                {page.total_liabilities}원
+                              </p>
+                            )}
+                            {page.total_equity && (
+                              <p>
+                                <span className="font-semibold">자본총계:</span>{' '}
+                                {page.total_equity}원
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                    </>
                   )}
                 </div>
               )}

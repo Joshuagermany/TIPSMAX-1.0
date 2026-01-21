@@ -161,6 +161,174 @@ class FinancialStatementExtractor:
         return None
 
     @staticmethod
+    def _extract_balance_sheet_items(text: str) -> Dict[str, Optional[str]]:
+        """
+        표준재무상태표 텍스트에서 부채 총계와 자본총계를 추출.
+        각 항목의 오른쪽에 있는 금액을 찾음.
+        
+        Returns:
+            {"total_liabilities": "금액", "total_equity": "금액"}
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("=" * 60)
+        logger.info("부채 총계/자본총계 추출 함수 호출됨!")
+        print("=" * 60)
+        print("부채 총계/자본총계 추출 함수 호출됨!")
+        print(f"텍스트 길이: {len(text) if text else 0}")
+        logger.info(f"텍스트 길이: {len(text) if text else 0}")
+        
+        result = {
+            "total_liabilities": None,
+            "total_equity": None
+        }
+        
+        if not text:
+            logger.warning("텍스트가 비어있음")
+            print("텍스트가 비어있음")
+            return result
+        
+        # 텍스트의 일부를 로그로 출력 (처음 500자)
+        logger.info(f"텍스트 앞 500자:\n{text[:500]}")
+        print(f"텍스트 앞 500자:\n{text[:500]}")
+        
+        # 부채 총계 키워드
+        liabilities_keywords = ['부채 총계', '부채총계', '부채', '총부채']
+        # 자본총계 키워드 (자본금과 구분하기 위해 더 구체적인 키워드만 사용)
+        equity_keywords = ['자본총계', '자본 총계', '총자본']
+        # 자본금을 제외하기 위한 키워드
+        exclude_keywords = ['자본금', '납입자본금', '기타자본금']
+        
+        lines = text.split('\n')
+        logger.info(f"총 줄 수: {len(lines)}")
+        print(f"총 줄 수: {len(lines)}")
+        
+        # 금액 패턴
+        amount_patterns = [
+            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*원',  # 1,000,000원
+            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)',  # 1,000,000
+            r'(\d{4,})',  # 1000000 (4자리 이상)
+        ]
+        
+        # 부채 총계 추출
+        for line_idx, line in enumerate(lines):
+            line_clean = line.strip()
+            
+            if result["total_liabilities"]:
+                break
+            
+            for keyword in liabilities_keywords:
+                if keyword in line_clean:
+                    logger.info(f"부채 총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
+                    print(f"부채 총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
+                    logger.info(f"키워드 '{keyword}'가 포함된 줄: {line_clean}")
+                    print(f"키워드 '{keyword}'가 포함된 줄: {line_clean}")
+                    
+                    # 키워드 위치 찾기
+                    keyword_pos = line_clean.find(keyword)
+                    if keyword_pos != -1:
+                        # 키워드 오른쪽 부분만 검색
+                        right_part = line_clean[keyword_pos + len(keyword):]
+                        logger.info(f"키워드 오른쪽 부분: {right_part}")
+                        print(f"키워드 오른쪽 부분: {right_part}")
+                        
+                        for pattern in amount_patterns:
+                            matches = list(re.finditer(pattern, right_part))
+                            for match in matches:
+                                amount_str = match.group(1)
+                                amount_clean = amount_str.replace(',', '').replace('.', '')
+                                if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                    logger.info(f"✅ 부채 총계 추출 성공: {amount_str}")
+                                    print(f"✅ 부채 총계 추출 성공: {amount_str}")
+                                    result["total_liabilities"] = amount_str
+                                    break
+                        
+                        if result["total_liabilities"]:
+                            break
+                    
+                    # 같은 줄에서 못 찾으면 다음 줄 확인
+                    if not result["total_liabilities"] and line_idx + 1 < len(lines):
+                        next_line = lines[line_idx + 1].strip()
+                        for pattern in amount_patterns:
+                            matches = re.finditer(pattern, next_line)
+                            for match in matches:
+                                amount_str = match.group(1)
+                                amount_clean = amount_str.replace(',', '').replace('.', '')
+                                if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                    logger.info(f"부채 총계 추출 (다음 줄): {amount_str}")
+                                    print(f"부채 총계 추출 (다음 줄): {amount_str}")
+                                    result["total_liabilities"] = amount_str
+                                    break
+                    
+                    break
+        
+        # 자본총계 추출 (자본금 제외)
+        for line_idx, line in enumerate(lines):
+            line_clean = line.strip()
+            
+            if result["total_equity"]:
+                break
+            
+            # 자본금 관련 키워드가 포함된 줄은 제외
+            should_exclude = any(exclude_kw in line_clean for exclude_kw in exclude_keywords)
+            if should_exclude:
+                logger.info(f"자본금 관련 줄 제외: {line_clean}")
+                print(f"자본금 관련 줄 제외: {line_clean}")
+                continue
+            
+            for keyword in equity_keywords:
+                if keyword in line_clean:
+                    logger.info(f"자본총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
+                    print(f"자본총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
+                    logger.info(f"키워드 '{keyword}'가 포함된 줄: {line_clean}")
+                    print(f"키워드 '{keyword}'가 포함된 줄: {line_clean}")
+                    
+                    # 키워드 위치 찾기
+                    keyword_pos = line_clean.find(keyword)
+                    if keyword_pos != -1:
+                        # 키워드 오른쪽 부분만 검색
+                        right_part = line_clean[keyword_pos + len(keyword):]
+                        logger.info(f"키워드 오른쪽 부분: {right_part}")
+                        print(f"키워드 오른쪽 부분: {right_part}")
+                        
+                        for pattern in amount_patterns:
+                            matches = list(re.finditer(pattern, right_part))
+                            for match in matches:
+                                amount_str = match.group(1)
+                                amount_clean = amount_str.replace(',', '').replace('.', '')
+                                if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                    logger.info(f"✅ 자본총계 추출 성공: {amount_str}")
+                                    print(f"✅ 자본총계 추출 성공: {amount_str}")
+                                    result["total_equity"] = amount_str
+                                    break
+                        
+                        if result["total_equity"]:
+                            break
+                    
+                    # 같은 줄에서 못 찾으면 다음 줄 확인
+                    if not result["total_equity"] and line_idx + 1 < len(lines):
+                        next_line = lines[line_idx + 1].strip()
+                        # 다음 줄도 자본금 관련 키워드가 없어야 함
+                        if not any(exclude_kw in next_line for exclude_kw in exclude_keywords):
+                            for pattern in amount_patterns:
+                                matches = re.finditer(pattern, next_line)
+                                for match in matches:
+                                    amount_str = match.group(1)
+                                    amount_clean = amount_str.replace(',', '').replace('.', '')
+                                    if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                        logger.info(f"자본총계 추출 (다음 줄): {amount_str}")
+                                        print(f"자본총계 추출 (다음 줄): {amount_str}")
+                                        result["total_equity"] = amount_str
+                                        break
+                    
+                    break
+        
+        logger.info(f"부채 총계/자본총계 추출 결과: {result}")
+        print(f"부채 총계/자본총계 추출 결과: {result}")
+        return result
+
+    @staticmethod
     def extract_from_pdf(file_path: str) -> Dict[str, List[Dict[str, str]]]:
         """
         PDF 파일에서 각 페이지를 분석하여 문서 타입을 분류.
@@ -270,12 +438,26 @@ class FinancialStatementExtractor:
                         
                         elif doc_type == "표준재무상태표" and not found_balance_sheet:
                             found_balance_sheet = True
+                            
+                            # 표준재무상태표에서 부채 총계와 자본총계 추출
+                            logger.info(f"✅ 표준재무상태표 발견! 페이지 {page_num}, 부채 총계/자본총계 추출 시도...")
+                            print(f"✅ 표준재무상태표 발견! 페이지 {page_num}, 부채 총계/자본총계 추출 시도...")
+                            print(f"페이지 {page_num} 전체 텍스트 길이: {len(page_text)}")
+                            logger.info(f"페이지 {page_num} 전체 텍스트 길이: {len(page_text)}")
+                            
+                            balance_items = FinancialStatementExtractor._extract_balance_sheet_items(page_text)
+                            
+                            logger.info(f"부채 총계/자본총계 추출 결과: {balance_items}")
+                            print(f"부채 총계/자본총계 추출 결과: {balance_items}")
+                            
                             result_pages.append({
                                 "page_number": page_num,
-                                "type": doc_type
+                                "type": doc_type,
+                                "total_liabilities": balance_items.get("total_liabilities"),
+                                "total_equity": balance_items.get("total_equity")
                             })
-                            logger.info(f"✅ 표준재무상태표 발견! 페이지 {page_num}")
-                            print(f"✅ 표준재무상태표 발견! 페이지 {page_num}")
+                            logger.info(f"✅ 표준재무상태표 저장 완료 (부채 총계: {balance_items.get('total_liabilities')}, 자본총계: {balance_items.get('total_equity')})")
+                            print(f"✅ 표준재무상태표 저장 완료 (부채 총계: {balance_items.get('total_liabilities')}, 자본총계: {balance_items.get('total_equity')})")
                         
                         # 둘 다 찾았으면 분석 중단
                         if found_income_statement and found_balance_sheet:

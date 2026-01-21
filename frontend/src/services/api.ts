@@ -108,6 +108,8 @@ export interface FinancialStatementPageInfo {
   page_number: number;
   type: string;
   revenue?: string;
+  total_liabilities?: string;
+  total_equity?: string;
 }
 
 export interface FinancialStatementResult {

@@ -12,11 +12,12 @@ interface FileUploadState {
 }
 
 interface MultiFileUploadZoneProps {
-  onAllFilesUploaded: (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }) => void;
+  onAllFilesUploaded: (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }, hasStartupCertificate: boolean) => void;
+  onStartupCertificateChange?: (hasStartupCertificate: boolean) => void;
   onError: (error: string) => void;
 }
 
-export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllFilesUploaded, onError }) => {
+export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllFilesUploaded, onStartupCertificateChange, onError }) => {
   const [files, setFiles] = useState<Record<FileType, FileUploadState>>({
     financial: { file: null, fileId: null, filename: null, isUploading: false, isUploaded: false },
     shareholder: { file: null, fileId: null, filename: null, isUploading: false, isUploaded: false },
@@ -82,7 +83,7 @@ export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllF
               ? { fileId: updatedFiles.corporate.fileId, filename: updatedFiles.corporate.filename! }
               : undefined,
           };
-          setTimeout(() => onAllFilesUploaded(simplified), 0);
+          setTimeout(() => onAllFilesUploaded(simplified, hasStartupCertificate), 0);
         }
 
         return updatedFiles;
@@ -216,7 +217,12 @@ export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllF
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setHasStartupCertificate(true)}
+            onClick={() => {
+              setHasStartupCertificate(true);
+              if (onStartupCertificateChange) {
+                onStartupCertificateChange(true);
+              }
+            }}
             className={`px-3 py-1 rounded-md text-sm font-medium border ${
               hasStartupCertificate
                 ? 'bg-primary-600 border-primary-500 text-white'
@@ -227,7 +233,12 @@ export const MultiFileUploadZone: React.FC<MultiFileUploadZoneProps> = ({ onAllF
           </button>
           <button
             type="button"
-            onClick={() => setHasStartupCertificate(false)}
+            onClick={() => {
+              setHasStartupCertificate(false);
+              if (onStartupCertificateChange) {
+                onStartupCertificateChange(false);
+              }
+            }}
             className={`px-3 py-1 rounded-md text-sm font-medium border ${
               !hasStartupCertificate
                 ? 'bg-primary-600 border-primary-500 text-white'

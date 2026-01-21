@@ -10,6 +10,7 @@ export const Home: React.FC = () => {
   const [shareholderInfo, setShareholderInfo] = useState<ShareholderResult | null>(null);
   const [financialStatementInfo, setFinancialStatementInfo] = useState<FinancialStatementResult | null>(null);
   const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+  const [hasStartupCertificate, setHasStartupCertificate] = useState<boolean>(true);
 
   // 재무제표 정보가 업데이트될 때마다 로그 출력
   useEffect(() => {
@@ -21,13 +22,14 @@ export const Home: React.FC = () => {
     }
   }, [financialStatementInfo]);
 
-  const handleAllFilesUploaded = (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }) => {
+  const handleAllFilesUploaded = (files: { financial?: { fileId: string; filename: string }; shareholder?: { fileId: string; filename: string }; corporate?: { fileId: string; filename: string } }, hasStartupCert: boolean) => {
     setError(null);
     setUploadedFiles(files);
     setBusinessInfo(null);
     setShareholderInfo(null);
     setFinancialStatementInfo(null);
     setAnalysisTime(null);
+    setHasStartupCertificate(hasStartupCert);
   };
 
   const handleStartAnalysis = async () => {
@@ -130,7 +132,11 @@ export const Home: React.FC = () => {
 
         {/* 업로드 영역 */}
         <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-8 mb-6">
-          <MultiFileUploadZone onAllFilesUploaded={handleAllFilesUploaded} onError={handleError} />
+          <MultiFileUploadZone 
+            onAllFilesUploaded={handleAllFilesUploaded} 
+            onStartupCertificateChange={setHasStartupCertificate}
+            onError={handleError} 
+          />
           <div className="mt-4 flex justify-end">
             <button
               type="button"
@@ -154,10 +160,554 @@ export const Home: React.FC = () => {
           </div>
         )}
 
+        {/* 평가 결과 */}
+        {!isAnalyzing && businessInfo && (
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              {businessInfo.company_name ? (
+                <>
+                  <span className="text-primary-400">{businessInfo.company_name}</span>
+                  <span> 평가 결과</span>
+                </>
+              ) : (
+                '평가 결과'
+              )}
+            </h3>
+            
+            {(() => {
+              // 빨간색 항목 확인 (하얀 배경에 빨간 글씨로 표시되는 항목들)
+              let hasRedItems = false;
+              
+              // 1. 3년 이상 기업 확인
+              const openingDate = businessInfo.opening_date_normalized || businessInfo.opening_date_raw;
+              if (openingDate) {
+                try {
+                  let dateStr = openingDate;
+                  if (dateStr.includes('년') && dateStr.includes('월') && dateStr.includes('일')) {
+                    const match = dateStr.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+                    if (match) {
+                      const year = match[1];
+                      const month = match[2].padStart(2, '0');
+                      const day = match[3].padStart(2, '0');
+                      dateStr = `${year}-${month}-${day}`;
+                    }
+                  }
+                  const openingDateObj = new Date(dateStr);
+                  const today = new Date();
+                  const diffTime = today.getTime() - openingDateObj.getTime();
+                  const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+                  if (diffYears >= 3) {
+                    hasRedItems = true;
+                  }
+                } catch (e) {
+                  // 날짜 파싱 실패 시 무시
+                }
+              }
+              
+              // 2. 수도권 확인
+              const address = businessInfo.head_office_address || '';
+              if (address && (
+                address.includes('서울특별시') ||
+                address.includes('서울') ||
+                address.includes('인천광역시') ||
+                address.includes('인천') ||
+                address.includes('경기도') ||
+                address.includes('경기')
+              )) {
+                hasRedItems = true;
+              }
+              
+              // 3. 미보유 확인
+              if (!hasStartupCertificate) {
+                hasRedItems = true;
+              }
+              
+              // 4. 매출액 기준 확인
+              const revenue = financialStatementInfo?.revenue;
+              if (revenue) {
+                try {
+                  const revenueStr = revenue.toString().replace(/[,\s원]/g, '');
+                  const revenueNum = parseFloat(revenueStr);
+                  if (!isNaN(revenueNum)) {
+                    const oneBillion = 1000000000;
+                    const twoBillion = 2000000000;
+                    if (revenueNum > oneBillion) {
+                      hasRedItems = true;
+                    }
+                  }
+                } catch (e) {
+                  // 무시
+                }
+              }
+              
+              // 5. 자본총액 적자 확인
+              const balanceSheetPage = financialStatementInfo?.pages?.find(
+                page => page.type === '표준재무상태표'
+              );
+              const totalEquity = balanceSheetPage?.total_equity;
+              if (totalEquity) {
+                try {
+                  const equityStr = totalEquity.toString().replace(/[,\s원]/g, '');
+                  const equityNum = parseFloat(equityStr);
+                  if (!isNaN(equityNum) && equityNum < 0) {
+                    hasRedItems = true;
+                  }
+                } catch (e) {
+                  // 무시
+                }
+              }
+              
+              // 6. 부채비율 기준 초과 확인
+              const totalLiabilities = balanceSheetPage?.total_liabilities;
+              if (totalLiabilities && totalEquity) {
+                try {
+                  const liabilitiesStr = totalLiabilities.toString().replace(/[,\s원]/g, '');
+                  const equityStr = totalEquity.toString().replace(/[,\s원]/g, '');
+                  const liabilitiesNum = parseFloat(liabilitiesStr);
+                  const equityNum = parseFloat(equityStr);
+                  if (!isNaN(liabilitiesNum) && !isNaN(equityNum) && equityNum !== 0) {
+                    const debtRatio = (liabilitiesNum / equityNum) * 100;
+                    if (debtRatio > 1000) {
+                      hasRedItems = true;
+                    }
+                  }
+                } catch (e) {
+                  // 무시
+                }
+              }
+              
+              return (
+                <>
+                  <div className="mb-4">
+                    <h2 className={`text-2xl font-bold ${hasRedItems ? 'text-red-500' : 'text-green-500'}`}>
+                      {hasRedItems ? 'TIPS 적합성 검사 탈락' : 'TIPS 적합성 검사 통과'}
+                    </h2>
+                  </div>
+                  <div className="border-b border-gray-600 mb-4"></div>
+                </>
+              );
+            })()}
+            
+            {/* 재제사항 요건 완화 여부 */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">
+                1. 재제사항 요건 완화 여부
+                {(() => {
+                  const openingDate = businessInfo.opening_date_normalized || businessInfo.opening_date_raw;
+                  return openingDate ? (
+                    <span className="text-gray-400 text-xs font-normal ml-2">
+                      (개업연월일: {openingDate})
+                    </span>
+                  ) : null;
+                })()}
+              </p>
+              {(() => {
+                // 개업연월일에서 3년 경과 여부 계산
+                const openingDate = businessInfo.opening_date_normalized || businessInfo.opening_date_raw;
+                let isUnder3Years = false;
+                let canClassify = false;
+                
+                if (openingDate) {
+                  try {
+                    // YYYY-MM-DD 형식 파싱
+                    let dateStr = openingDate;
+                    if (dateStr.includes('년') && dateStr.includes('월') && dateStr.includes('일')) {
+                      // 한글 형식: "2020년 5월 1일" -> "2020-05-01"
+                      const match = dateStr.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+                      if (match) {
+                        const year = match[1];
+                        const month = match[2].padStart(2, '0');
+                        const day = match[3].padStart(2, '0');
+                        dateStr = `${year}-${month}-${day}`;
+                      }
+                    }
+                    
+                    const openingDateObj = new Date(dateStr);
+                    const today = new Date();
+                    const diffTime = today.getTime() - openingDateObj.getTime();
+                    const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+                    
+                    isUnder3Years = diffYears < 3;
+                    canClassify = true;
+                  } catch (e) {
+                    canClassify = false;
+                  }
+                }
+                
+                return (
+                  <div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled
+                        className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                          canClassify && !isUnder3Years
+                            ? 'bg-red-100 border-red-500 text-red-600 hover:bg-red-200'
+                            : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                        }`}
+                      >
+                        3년 이상 기업
+                      </button>
+                      <button
+                        type="button"
+                        disabled
+                        className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                          canClassify && isUnder3Years
+                            ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                            : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                        }`}
+                      >
+                        초기 3년 기업
+                      </button>
+                    </div>
+                    {canClassify && !isUnder3Years && (
+                      <p className="mt-2 text-sm font-medium text-red-600">
+                        재제사항 요건 완화 불가능
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 비수도권 가점 여부 */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">
+                2. 비수도권 가점 여부
+                {businessInfo.head_office_address && (
+                  <span className="text-gray-400 text-xs font-normal ml-2">
+                    (본점 소재지: {businessInfo.head_office_address}...)
+                  </span>
+                )}
+              </p>
+              {(() => {
+                const address = businessInfo.head_office_address || '';
+                let isMetropolitan = false;
+                let canClassify = false;
+                
+                if (address) {
+                  // 서울특별시, 인천광역시, 경기도 확인
+                  if (
+                    address.includes('서울특별시') ||
+                    address.includes('서울') ||
+                    address.includes('인천광역시') ||
+                    address.includes('인천') ||
+                    address.includes('경기도') ||
+                    address.includes('경기')
+                  ) {
+                    isMetropolitan = true;
+                  }
+                  canClassify = true;
+                }
+                
+                return (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && isMetropolitan
+                          ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      수도권
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && !isMetropolitan
+                          ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      비수도권
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 창업기업확인서 보유여부 */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">
+                4. 창업기업확인서 보유여부
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled
+                  className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                    hasStartupCertificate
+                      ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                      : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                  }`}
+                >
+                  보유 중
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                    !hasStartupCertificate
+                      ? 'bg-red-100 border-red-500 text-red-600 hover:bg-red-200'
+                      : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                  }`}
+                >
+                  미보유
+                </button>
+              </div>
+            </div>
+
+            {/* 직전년도 매출 기준 초과 여부 */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">
+                5. 직전년도 매출 기준 초과 여부
+                {financialStatementInfo?.revenue && (
+                  <span className="text-gray-400 text-xs font-normal ml-2">
+                    (매출액: {financialStatementInfo.revenue}원)
+                  </span>
+                )}
+              </p>
+              {(() => {
+                const revenue = financialStatementInfo?.revenue;
+                let revenueCategory = ''; // 'under10', 'over10', 'over20'
+                let canClassify = false;
+                
+                if (revenue) {
+                  try {
+                    // 매출액 문자열에서 숫자만 추출 (쉼표, 원, 공백 제거)
+                    const revenueStr = revenue.toString().replace(/[,\s원]/g, '');
+                    const revenueNum = parseFloat(revenueStr);
+                    
+                    if (!isNaN(revenueNum)) {
+                      const oneBillion = 1000000000; // 10억
+                      const twoBillion = 2000000000; // 20억
+                      
+                      if (revenueNum <= oneBillion) {
+                        revenueCategory = 'under10';
+                      } else if (revenueNum <= twoBillion) {
+                        revenueCategory = 'over10';
+                      } else {
+                        revenueCategory = 'over20';
+                      }
+                      canClassify = true;
+                    }
+                  } catch (e) {
+                    canClassify = false;
+                  }
+                }
+                
+                return (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && revenueCategory === 'under10'
+                          ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      10억 이하
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && revenueCategory === 'over10'
+                          ? 'bg-red-100 border-red-500 text-red-600 hover:bg-red-200'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      10억 초과
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && revenueCategory === 'over20'
+                          ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      20억 초과
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 자본총액 적자 여부 */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">
+                6. 자본총액 적자 여부
+                {(() => {
+                  const balanceSheetPage = financialStatementInfo?.pages?.find(
+                    page => page.type === '표준재무상태표'
+                  );
+                  const totalEquity = balanceSheetPage?.total_equity;
+                  return totalEquity ? (
+                    <span className="text-gray-400 text-xs font-normal ml-2">
+                      (자본총계: {totalEquity}원)
+                    </span>
+                  ) : null;
+                })()}
+              </p>
+              {(() => {
+                // 표준재무상태표 페이지에서 자본총계 추출
+                const balanceSheetPage = financialStatementInfo?.pages?.find(
+                  page => page.type === '표준재무상태표'
+                );
+                const totalEquity = balanceSheetPage?.total_equity;
+                let isDeficit = false; // 적자 여부
+                let canClassify = false;
+                
+                if (totalEquity) {
+                  try {
+                    // 자본총계 문자열에서 숫자만 추출 (쉼표, 원, 공백 제거)
+                    const equityStr = totalEquity.toString().replace(/[,\s원]/g, '');
+                    const equityNum = parseFloat(equityStr);
+                    
+                    if (!isNaN(equityNum)) {
+                      isDeficit = equityNum < 0;
+                      canClassify = true;
+                    }
+                  } catch (e) {
+                    canClassify = false;
+                  }
+                }
+                
+                return (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && isDeficit
+                          ? 'bg-red-100 border-red-500 text-red-600 hover:bg-red-200'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      자본총액 적자
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && !isDeficit
+                          ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      자본총액 양호
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 부채비율 기준 초과 여부 */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-300 mb-2">
+                7. 부채비율 기준 초과 여부{' '}
+                <span className="font-normal">(기준: 부채비율 1000%)</span>
+                {(() => {
+                  const balanceSheetPage = financialStatementInfo?.pages?.find(
+                    page => page.type === '표준재무상태표'
+                  );
+                  const totalLiabilities = balanceSheetPage?.total_liabilities;
+                  const totalEquity = balanceSheetPage?.total_equity;
+                  
+                  if (totalLiabilities && totalEquity) {
+                    try {
+                      const liabilitiesStr = totalLiabilities.toString().replace(/[,\s원]/g, '');
+                      const equityStr = totalEquity.toString().replace(/[,\s원]/g, '');
+                      const liabilitiesNum = parseFloat(liabilitiesStr);
+                      const equityNum = parseFloat(equityStr);
+                      
+                      if (!isNaN(liabilitiesNum) && !isNaN(equityNum) && equityNum !== 0) {
+                        const debtRatio = (liabilitiesNum / equityNum) * 100;
+                        return (
+                          <span className="text-gray-400 text-xs font-normal ml-2">
+                            (부채비율: {debtRatio.toFixed(2)}%)
+                          </span>
+                        );
+                      }
+                    } catch (e) {
+                      // 계산 실패 시 표시하지 않음
+                    }
+                  }
+                  return null;
+                })()}
+              </p>
+              {(() => {
+                // 표준재무상태표 페이지에서 부채총계와 자본총계 추출
+                const balanceSheetPage = financialStatementInfo?.pages?.find(
+                  page => page.type === '표준재무상태표'
+                );
+                const totalLiabilities = balanceSheetPage?.total_liabilities;
+                const totalEquity = balanceSheetPage?.total_equity;
+                let isOverThreshold = false; // 1000% 초과 여부
+                let canClassify = false;
+                
+                if (totalLiabilities && totalEquity) {
+                  try {
+                    // 부채총계와 자본총계 문자열에서 숫자만 추출 (쉼표, 원, 공백 제거)
+                    const liabilitiesStr = totalLiabilities.toString().replace(/[,\s원]/g, '');
+                    const equityStr = totalEquity.toString().replace(/[,\s원]/g, '');
+                    const liabilitiesNum = parseFloat(liabilitiesStr);
+                    const equityNum = parseFloat(equityStr);
+                    
+                    if (!isNaN(liabilitiesNum) && !isNaN(equityNum) && equityNum !== 0) {
+                      // 부채비율 계산: (부채총계 / 자본총계) x 100
+                      const debtRatio = (liabilitiesNum / equityNum) * 100;
+                      
+                      // 1000% 초과 여부 판단
+                      isOverThreshold = debtRatio > 1000;
+                      canClassify = true;
+                    }
+                  } catch (e) {
+                    canClassify = false;
+                  }
+                }
+                
+                return (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && isOverThreshold
+                          ? 'bg-red-100 border-red-500 text-red-600 hover:bg-red-200'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      부채비율 기준 초과
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        canClassify && !isOverThreshold
+                          ? 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 cursor-default hover:bg-gray-600'
+                      }`}
+                    >
+                      부채비율 양호
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* 안내 사항 */}
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="font-semibold text-white">분석 항목</h3>
+            <h3 className="text-lg font-semibold text-white">분석 항목</h3>
             {analysisTime !== null && (
               <span className="text-xs text-gray-400">
                 분석 시간: {analysisTime}초

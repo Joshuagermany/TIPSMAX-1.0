@@ -107,11 +107,11 @@ class FinancialStatementExtractor:
                     print(f"키워드 '{keyword}'가 포함된 줄: {line_clean}")
                     
                     # 같은 줄에서 금액 찾기
-                    # 패턴: 숫자, 쉼표, 점 포함 (예: 1,000,000원, 1,000,000, 1000000)
-                    # 금액 패턴: 숫자와 쉼표, 점으로 구성된 큰 숫자
+                    # 패턴: 숫자, 쉼표, 점 포함 (예: 1,000,000원, 1, 175,561,410, 1000000)
+                    # 금액 패턴: 숫자와 쉼표, 점으로 구성된 큰 숫자 (쉼표 뒤 공백 허용)
                     amount_patterns = [
-                        r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*원',  # 1,000,000원
-                        r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)',  # 1,000,000
+                        r'(\d{1,3}(?:\s*,\s*\d{3})*(?:\.\d+)?)\s*원',  # 1,000,000원 또는 1, 175,561,410원
+                        r'(\d{1,3}(?:\s*,\s*\d{3})*(?:\.\d+)?)',  # 1,000,000 또는 1, 175,561,410
                         r'(\d{4,})',  # 1000000 (4자리 이상)
                     ]
                     
@@ -128,15 +128,17 @@ class FinancialStatementExtractor:
                             logger.info(f"매칭된 금액 후보: {amount_str}")
                             print(f"매칭된 금액 후보: {amount_str}")
                             
-                            # 쉼표 제거하고 숫자로 변환 가능한지 확인
-                            amount_clean = amount_str.replace(',', '').replace('.', '')
+                            # 쉼표와 공백 제거하고 숫자로 변환 가능한지 확인
+                            amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
                             logger.info(f"정리된 금액: {amount_clean}, 길이: {len(amount_clean)}, 숫자 여부: {amount_clean.isdigit()}")
                             print(f"정리된 금액: {amount_clean}, 길이: {len(amount_clean)}, 숫자 여부: {amount_clean.isdigit()}")
                             
                             if amount_clean.isdigit() and len(amount_clean) >= 4:
-                                logger.info(f"✅ 매출액 추출 성공: {amount_str}")
-                                print(f"✅ 매출액 추출 성공: {amount_str}")
-                                return amount_str
+                                # 출력 시 공백 제거
+                                amount_output = amount_str.replace(' ', '')
+                                logger.info(f"✅ 매출액 추출 성공: {amount_output}")
+                                print(f"✅ 매출액 추출 성공: {amount_output}")
+                                return amount_output
                             else:
                                 logger.info(f"금액 후보 제외 (길이 부족 또는 숫자 아님): {amount_str}")
                                 print(f"금액 후보 제외 (길이 부족 또는 숫자 아님): {amount_str}")
@@ -148,11 +150,14 @@ class FinancialStatementExtractor:
                             matches = re.finditer(pattern, next_line)
                             for match in matches:
                                 amount_str = match.group(1)
-                                amount_clean = amount_str.replace(',', '').replace('.', '')
+                                # 쉼표와 공백 제거
+                                amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
                                 if amount_clean.isdigit() and len(amount_clean) >= 4:
-                                    logger.info(f"매출액 추출 (다음 줄): {amount_str}")
-                                    print(f"매출액 추출 (다음 줄): {amount_str}")
-                                    return amount_str
+                                    # 출력 시 공백 제거
+                                    amount_output = amount_str.replace(' ', '')
+                                    logger.info(f"매출액 추출 (다음 줄): {amount_output}")
+                                    print(f"매출액 추출 (다음 줄): {amount_output}")
+                                    return amount_output
                     
                     break
         
@@ -193,10 +198,10 @@ class FinancialStatementExtractor:
         logger.info(f"텍스트 앞 500자:\n{text[:500]}")
         print(f"텍스트 앞 500자:\n{text[:500]}")
         
-        # 부채 총계 키워드
-        liabilities_keywords = ['부채 총계', '부채총계', '부채', '총부채']
-        # 자본총계 키워드 (자본금과 구분하기 위해 더 구체적인 키워드만 사용)
-        equity_keywords = ['자본총계', '자본 총계', '총자본']
+        # 부채 총계 키워드 (정확한 키워드만 사용 - 유동부채, 비유동부채 제외)
+        liabilities_keywords = ['부채 총계', '부채총계', '총부채']
+        # 자본총계 키워드 (정확한 키워드만 사용 - 부채와 자본총계, 자본금 제외)
+        equity_keywords = ['자본총계', '자본 총계']
         # 자본금을 제외하기 위한 키워드
         exclude_keywords = ['자본금', '납입자본금', '기타자본금']
         
@@ -204,10 +209,10 @@ class FinancialStatementExtractor:
         logger.info(f"총 줄 수: {len(lines)}")
         print(f"총 줄 수: {len(lines)}")
         
-        # 금액 패턴
+        # 금액 패턴 (쉼표 뒤 공백 허용)
         amount_patterns = [
-            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*원',  # 1,000,000원
-            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)',  # 1,000,000
+            r'(\d{1,3}(?:\s*,\s*\d{3})*(?:\.\d+)?)\s*원',  # 1,000,000원 또는 1, 175,561,410원
+            r'(\d{1,3}(?:\s*,\s*\d{3})*(?:\.\d+)?)',  # 1,000,000 또는 1, 175,561,410
             r'(\d{4,})',  # 1000000 (4자리 이상)
         ]
         
@@ -218,8 +223,16 @@ class FinancialStatementExtractor:
             if result["total_liabilities"]:
                 break
             
+            # 먼저 정확한 키워드로 시도
+            found_by_keyword = False
             for keyword in liabilities_keywords:
+                # 정확한 키워드 매칭 (유동부채, 비유동부채 제외)
+                # '부채' 단독이 아닌 '부채총계' 또는 '부채 총계'만 매칭
                 if keyword in line_clean:
+                    # '유동부채', '비유동부채' 같은 항목 제외
+                    if '유동부채' in line_clean or '비유동부채' in line_clean:
+                        continue
+                    
                     logger.info(f"부채 총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
                     print(f"부채 총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
                     logger.info(f"키워드 '{keyword}'가 포함된 줄: {line_clean}")
@@ -237,11 +250,15 @@ class FinancialStatementExtractor:
                             matches = list(re.finditer(pattern, right_part))
                             for match in matches:
                                 amount_str = match.group(1)
-                                amount_clean = amount_str.replace(',', '').replace('.', '')
+                                # 쉼표와 공백 제거
+                                amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
                                 if amount_clean.isdigit() and len(amount_clean) >= 4:
-                                    logger.info(f"✅ 부채 총계 추출 성공: {amount_str}")
-                                    print(f"✅ 부채 총계 추출 성공: {amount_str}")
-                                    result["total_liabilities"] = amount_str
+                                    # 출력 시 공백 제거
+                                    amount_output = amount_str.replace(' ', '')
+                                    logger.info(f"✅ 부채 총계 추출 성공: {amount_output}")
+                                    print(f"✅ 부채 총계 추출 성공: {amount_output}")
+                                    result["total_liabilities"] = amount_output
+                                    found_by_keyword = True
                                     break
                         
                         if result["total_liabilities"]:
@@ -254,14 +271,66 @@ class FinancialStatementExtractor:
                             matches = re.finditer(pattern, next_line)
                             for match in matches:
                                 amount_str = match.group(1)
-                                amount_clean = amount_str.replace(',', '').replace('.', '')
+                                # 쉼표와 공백 제거
+                                amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
                                 if amount_clean.isdigit() and len(amount_clean) >= 4:
-                                    logger.info(f"부채 총계 추출 (다음 줄): {amount_str}")
-                                    print(f"부채 총계 추출 (다음 줄): {amount_str}")
-                                    result["total_liabilities"] = amount_str
+                                    # 출력 시 공백 제거
+                                    amount_output = amount_str.replace(' ', '')
+                                    logger.info(f"부채 총계 추출 (다음 줄): {amount_output}")
+                                    print(f"부채 총계 추출 (다음 줄): {amount_output}")
+                                    result["total_liabilities"] = amount_output
+                                    found_by_keyword = True
                                     break
                     
-                    break
+                    if found_by_keyword:
+                        break
+            
+            # 키워드로 찾지 못했으면 코드(333)로 찾기
+            if not result["total_liabilities"]:
+                # 세자리 코드 333 찾기
+                code_match = re.search(r'\b333\b', line_clean)
+                if code_match:
+                    logger.info(f"부채총계 코드(333) 발견 (줄 {line_idx + 1})")
+                    print(f"부채총계 코드(333) 발견 (줄 {line_idx + 1})")
+                    logger.info(f"코드가 포함된 줄: {line_clean}")
+                    print(f"코드가 포함된 줄: {line_clean}")
+                    
+                    # 코드 오른쪽 부분에서 금액 찾기
+                    code_pos = code_match.end()
+                    right_part = line_clean[code_pos:]
+                    logger.info(f"코드 오른쪽 부분: {right_part}")
+                    print(f"코드 오른쪽 부분: {right_part}")
+                    
+                    for pattern in amount_patterns:
+                        matches = list(re.finditer(pattern, right_part))
+                        for match in matches:
+                            amount_str = match.group(1)
+                            # 쉼표와 공백 제거
+                            amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
+                            if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                # 출력 시 공백 제거
+                                amount_output = amount_str.replace(' ', '')
+                                logger.info(f"✅ 부채 총계 추출 성공 (코드 333): {amount_output}")
+                                print(f"✅ 부채 총계 추출 성공 (코드 333): {amount_output}")
+                                result["total_liabilities"] = amount_output
+                                break
+                    
+                    # 같은 줄에서 못 찾으면 다음 줄 확인
+                    if not result["total_liabilities"] and line_idx + 1 < len(lines):
+                        next_line = lines[line_idx + 1].strip()
+                        for pattern in amount_patterns:
+                            matches = re.finditer(pattern, next_line)
+                            for match in matches:
+                                amount_str = match.group(1)
+                                # 쉼표와 공백 제거
+                                amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
+                                if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                    # 출력 시 공백 제거
+                                    amount_output = amount_str.replace(' ', '')
+                                    logger.info(f"부채 총계 추출 (코드 333, 다음 줄): {amount_output}")
+                                    print(f"부채 총계 추출 (코드 333, 다음 줄): {amount_output}")
+                                    result["total_liabilities"] = amount_output
+                                    break
         
         # 자본총계 추출 (자본금 제외)
         for line_idx, line in enumerate(lines):
@@ -277,8 +346,17 @@ class FinancialStatementExtractor:
                 print(f"자본금 관련 줄 제외: {line_clean}")
                 continue
             
+            # 먼저 정확한 키워드로 시도
+            found_by_keyword = False
             for keyword in equity_keywords:
+                # 정확한 키워드 매칭 (부채와 자본총계 제외)
                 if keyword in line_clean:
+                    # '부채와 자본총계', '부채 및 자본총계' 같은 항목 제외
+                    if '부채' in line_clean and ('와' in line_clean or '및' in line_clean):
+                        logger.info(f"부채와 자본총계 관련 줄 제외: {line_clean}")
+                        print(f"부채와 자본총계 관련 줄 제외: {line_clean}")
+                        continue
+                    
                     logger.info(f"자본총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
                     print(f"자본총계 키워드 발견: '{keyword}' (줄 {line_idx + 1})")
                     logger.info(f"키워드 '{keyword}'가 포함된 줄: {line_clean}")
@@ -296,11 +374,15 @@ class FinancialStatementExtractor:
                             matches = list(re.finditer(pattern, right_part))
                             for match in matches:
                                 amount_str = match.group(1)
-                                amount_clean = amount_str.replace(',', '').replace('.', '')
+                                # 쉼표와 공백 제거
+                                amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
                                 if amount_clean.isdigit() and len(amount_clean) >= 4:
-                                    logger.info(f"✅ 자본총계 추출 성공: {amount_str}")
-                                    print(f"✅ 자본총계 추출 성공: {amount_str}")
-                                    result["total_equity"] = amount_str
+                                    # 출력 시 공백 제거
+                                    amount_output = amount_str.replace(' ', '')
+                                    logger.info(f"✅ 자본총계 추출 성공: {amount_output}")
+                                    print(f"✅ 자본총계 추출 성공: {amount_output}")
+                                    result["total_equity"] = amount_output
+                                    found_by_keyword = True
                                     break
                         
                         if result["total_equity"]:
@@ -315,14 +397,68 @@ class FinancialStatementExtractor:
                                 matches = re.finditer(pattern, next_line)
                                 for match in matches:
                                     amount_str = match.group(1)
-                                    amount_clean = amount_str.replace(',', '').replace('.', '')
+                                    # 쉼표와 공백 제거
+                                    amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
                                     if amount_clean.isdigit() and len(amount_clean) >= 4:
-                                        logger.info(f"자본총계 추출 (다음 줄): {amount_str}")
-                                        print(f"자본총계 추출 (다음 줄): {amount_str}")
-                                        result["total_equity"] = amount_str
+                                        # 출력 시 공백 제거
+                                        amount_output = amount_str.replace(' ', '')
+                                        logger.info(f"자본총계 추출 (다음 줄): {amount_output}")
+                                        print(f"자본총계 추출 (다음 줄): {amount_output}")
+                                        result["total_equity"] = amount_output
+                                        found_by_keyword = True
                                         break
                     
-                    break
+                    if found_by_keyword:
+                        break
+            
+            # 키워드로 찾지 못했으면 코드(382)로 찾기
+            if not result["total_equity"]:
+                # 세자리 코드 382 찾기
+                code_match = re.search(r'\b382\b', line_clean)
+                if code_match:
+                    logger.info(f"자본총계 코드(382) 발견 (줄 {line_idx + 1})")
+                    print(f"자본총계 코드(382) 발견 (줄 {line_idx + 1})")
+                    logger.info(f"코드가 포함된 줄: {line_clean}")
+                    print(f"코드가 포함된 줄: {line_clean}")
+                    
+                    # 코드 오른쪽 부분에서 금액 찾기
+                    code_pos = code_match.end()
+                    right_part = line_clean[code_pos:]
+                    logger.info(f"코드 오른쪽 부분: {right_part}")
+                    print(f"코드 오른쪽 부분: {right_part}")
+                    
+                    for pattern in amount_patterns:
+                        matches = list(re.finditer(pattern, right_part))
+                        for match in matches:
+                            amount_str = match.group(1)
+                            # 쉼표와 공백 제거
+                            amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
+                            if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                # 출력 시 공백 제거
+                                amount_output = amount_str.replace(' ', '')
+                                logger.info(f"✅ 자본총계 추출 성공 (코드 382): {amount_output}")
+                                print(f"✅ 자본총계 추출 성공 (코드 382): {amount_output}")
+                                result["total_equity"] = amount_output
+                                break
+                    
+                    # 같은 줄에서 못 찾으면 다음 줄 확인
+                    if not result["total_equity"] and line_idx + 1 < len(lines):
+                        next_line = lines[line_idx + 1].strip()
+                        # 다음 줄도 자본금 관련 키워드가 없어야 함
+                        if not any(exclude_kw in next_line for exclude_kw in exclude_keywords):
+                            for pattern in amount_patterns:
+                                matches = re.finditer(pattern, next_line)
+                                for match in matches:
+                                    amount_str = match.group(1)
+                                    # 쉼표와 공백 제거
+                                    amount_clean = amount_str.replace(',', '').replace(' ', '').replace('.', '')
+                                    if amount_clean.isdigit() and len(amount_clean) >= 4:
+                                        # 출력 시 공백 제거
+                                        amount_output = amount_str.replace(' ', '')
+                                        logger.info(f"자본총계 추출 (코드 382, 다음 줄): {amount_output}")
+                                        print(f"자본총계 추출 (코드 382, 다음 줄): {amount_output}")
+                                        result["total_equity"] = amount_output
+                                        break
         
         logger.info(f"부채 총계/자본총계 추출 결과: {result}")
         print(f"부채 총계/자본총계 추출 결과: {result}")
@@ -465,7 +601,39 @@ class FinancialStatementExtractor:
                             print("표준손익계산서와 표준재무상태표를 모두 찾았으므로 분석 중단")
                             break
                     else:
-                        logger.warning(f"페이지 {page_num}: 문서 타입을 찾을 수 없음 (확인한 상단 텍스트: {top_text[:200]})")
+                        # 문서 타입을 찾을 수 없으면 '표준손익계산서'로 처리
+                        logger.warning(f"페이지 {page_num}: 문서 타입을 찾을 수 없음, '표준손익계산서'로 처리 (확인한 상단 텍스트: {top_text[:200]})")
+                        print(f"페이지 {page_num}: 문서 타입을 찾을 수 없음, '표준손익계산서'로 처리")
+                        doc_type = "표준손익계산서"
+                        
+                        # 표준손익계산서로 처리
+                        if not found_income_statement:
+                            found_income_statement = True
+                            
+                            # 표준손익계산서에서 매출액 추출
+                            logger.info(f"✅ 표준손익계산서 발견! 페이지 {page_num}, 매출액 추출 시도...")
+                            print(f"✅ 표준손익계산서 발견! 페이지 {page_num}, 매출액 추출 시도...")
+                            print(f"페이지 {page_num} 전체 텍스트 길이: {len(page_text)}")
+                            logger.info(f"페이지 {page_num} 전체 텍스트 길이: {len(page_text)}")
+                            
+                            revenue = FinancialStatementExtractor._extract_revenue(page_text)
+                            
+                            logger.info(f"매출액 추출 결과: {revenue}")
+                            print(f"매출액 추출 결과: {revenue}")
+                            
+                            result_pages.append({
+                                "page_number": page_num,
+                                "type": doc_type,
+                                "revenue": revenue  # 매출액 추가
+                            })
+                            logger.info(f"✅ 표준손익계산서 저장 완료 (매출액: {revenue})")
+                            print(f"✅ 표준손익계산서 저장 완료 (매출액: {revenue})")
+                        
+                        # 둘 다 찾았으면 분석 중단
+                        if found_income_statement and found_balance_sheet:
+                            logger.info("표준손익계산서와 표준재무상태표를 모두 찾았으므로 분석 중단")
+                            print("표준손익계산서와 표준재무상태표를 모두 찾았으므로 분석 중단")
+                            break
                     
                     logger.info(f"=== 페이지 {page_num} 처리 완료 ===")
                 
